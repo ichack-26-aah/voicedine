@@ -16,3 +16,49 @@
 .animate-fadeIn {
   animation: fadeIn 1s ease-in forwards;
 }
+
+/* Radar ripple effect for active recording */
+@keyframes radar-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+.animate-radar-ripple {
+  animation: radar-ripple 2s ease-out infinite;
+}
+
+.animation-delay-500 {
+  animation-delay: 0.5s;
+}
+
+.animation-delay-1000 {
+  animation-delay: 1s;
+}
+
+/* Slow pulse for idle state */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(0.97);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 2.5s ease-in-out infinite;
+}
+
+/* Red glow shadow utility */
+.shadow-red-glow {
+  box-shadow: 0 0 30px 10px rgba(239, 68, 68, 0.5);
+}
+
