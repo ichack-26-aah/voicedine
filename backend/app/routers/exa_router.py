@@ -4,6 +4,7 @@ from app.models.exa_models import (
     ResearchCreateRequest,
     ResearchCreateResponse,
     ResearchGetResponse,
+    ResearchSyncRequest,
 )
 from app.services.exa_service import ExaService, get_exa_service
 
@@ -23,6 +24,27 @@ async def create_research(
         return ResearchCreateResponse(**data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {e}") from e
+
+
+@router.post("/research/sync", response_model=ResearchGetResponse)
+async def research_sync(
+    request: ResearchSyncRequest,
+    exa: ExaService = Depends(get_exa_service),
+) -> ResearchGetResponse:
+    try:
+        data = exa.research_sync(
+            user_prompt=request.prompt,
+            model=request.model,
+        )
+        return ResearchGetResponse(**data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     except Exception as e:

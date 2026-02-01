@@ -44,3 +44,11 @@ class ResearchGetResponse(BaseModel):
     output: ResearchOutput | None = None
     cost_dollars: Any | None = None
     events: list[Any] | None = None
+
+
+class ResearchSyncRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, description="User search query / constraints")
+    model: str = Field(
+        "exa-research-fast",
+        description="Research model: exa-research-fast, exa-research, or exa-research-pro",
+    )

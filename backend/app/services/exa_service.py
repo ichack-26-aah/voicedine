@@ -1,12 +1,10 @@
 import os
+import time
 from typing import Any
 
 from exa_py import Exa
 
-SYSTEM_PROMPT = (
-    "Search for restaurants in the specified location based on the user"
-    " specified constraints."
-)
+SYSTEM_PROMPT = "Search for restaurants in the specified location based on the user specified constraints."
 
 RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -103,6 +101,29 @@ class ExaService:
             return result
         except Exception as e:
             raise RuntimeError(f"Exa research retrieval failed: {e}") from e
+
+    def research_sync(
+        self,
+        user_prompt: str,
+        model: str = "exa-research-fast",
+        poll_interval: float = 2.0,
+        timeout: float = 120.0,
+    ) -> dict[str, Any]:
+        """Create a research task, poll until done, and return parsed output."""
+        task_data = self.create_research(user_prompt, model=model)
+        research_id: str = task_data["research_id"]
+
+        elapsed = 0.0
+        while elapsed < timeout:
+            result = self.get_research(research_id)
+            if result["status"] == "completed":
+                return result
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+        raise TimeoutError(
+            f"Research {research_id} did not complete within {timeout}s"
+        )
 
 
 def get_exa_service() -> ExaService:
