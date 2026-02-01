@@ -5,7 +5,7 @@ from exa_py import Exa
 
 LOCATION="Champs-Élysées, Paris, France"
 
-SYSTEM_PROMPT = "Search for restaurants in " + LOCATION + " based on the user specified constraints."
+SYSTEM_PROMPT = "Search for restaurants in " + LOCATION + " based on the user specified constraints. Return the restaurant's phone number if available."
 
 RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -26,6 +26,7 @@ RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
                     },
                     "price_range": {"type": "string"},
                     "url": {"type": "string"},
+                    "phone": {"type": "string"},
                     "geolocation": {
                         "type": "object",
                         "properties": {
@@ -45,6 +46,7 @@ RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
                     "price_range",
                     "url",
                     "geolocation",
+                    # "phone" is optional depending on Exa's finding, so we don't strictly require it
                 ],
             },
         },
