@@ -44,9 +44,95 @@ const landmarkIcon = new L.Icon({
   popupAnchor: [0, -32],
 });
 
-// Search result restaurant icon - bright and distinctive food icon
+// Cuisine-based icon mapping using Flaticon food icons
+const CUISINE_ICONS: Record<string, string> = {
+  'italian': 'https://cdn-icons-png.flaticon.com/512/3595/3595455.png', // Pizza
+  'pizza': 'https://cdn-icons-png.flaticon.com/512/3595/3595455.png',
+  'pasta': 'https://cdn-icons-png.flaticon.com/512/3480/3480618.png', // Spaghetti
+  'french': 'https://cdn-icons-png.flaticon.com/512/5787/5787016.png', // Croissant
+  'japanese': 'https://cdn-icons-png.flaticon.com/512/2252/2252075.png', // Sushi
+  'sushi': 'https://cdn-icons-png.flaticon.com/512/2252/2252075.png',
+  'chinese': 'https://cdn-icons-png.flaticon.com/512/1046/1046786.png', // Noodles
+  'asian': 'https://cdn-icons-png.flaticon.com/512/1046/1046786.png',
+  'indian': 'https://cdn-icons-png.flaticon.com/512/2515/2515183.png', // Curry
+  'mexican': 'https://cdn-icons-png.flaticon.com/512/5787/5787100.png', // Taco
+  'american': 'https://cdn-icons-png.flaticon.com/512/1046/1046769.png', // Burger
+  'burger': 'https://cdn-icons-png.flaticon.com/512/1046/1046769.png',
+  'fast food': 'https://cdn-icons-png.flaticon.com/512/1046/1046769.png',
+  'thai': 'https://cdn-icons-png.flaticon.com/512/2276/2276931.png', // Thai bowl
+  'vietnamese': 'https://cdn-icons-png.flaticon.com/512/2276/2276931.png',
+  'korean': 'https://cdn-icons-png.flaticon.com/512/2276/2276931.png',
+  'mediterranean': 'https://cdn-icons-png.flaticon.com/512/3480/3480823.png', // Salad
+  'greek': 'https://cdn-icons-png.flaticon.com/512/3480/3480823.png',
+  'seafood': 'https://cdn-icons-png.flaticon.com/512/2515/2515269.png', // Fish
+  'fish': 'https://cdn-icons-png.flaticon.com/512/2515/2515269.png',
+  'steakhouse': 'https://cdn-icons-png.flaticon.com/512/3143/3143643.png', // Steak
+  'steak': 'https://cdn-icons-png.flaticon.com/512/3143/3143643.png',
+  'bbq': 'https://cdn-icons-png.flaticon.com/512/3143/3143643.png',
+  'bakery': 'https://cdn-icons-png.flaticon.com/512/3081/3081967.png', // Bread
+  'cafe': 'https://cdn-icons-png.flaticon.com/512/924/924514.png', // Coffee
+  'coffee': 'https://cdn-icons-png.flaticon.com/512/924/924514.png',
+  'dessert': 'https://cdn-icons-png.flaticon.com/512/3081/3081949.png', // Cake
+  'ice cream': 'https://cdn-icons-png.flaticon.com/512/3081/3081949.png',
+  'vegetarian': 'https://cdn-icons-png.flaticon.com/512/2515/2515263.png', // Salad
+  'vegan': 'https://cdn-icons-png.flaticon.com/512/2515/2515263.png',
+  'healthy': 'https://cdn-icons-png.flaticon.com/512/2515/2515263.png',
+  'spanish': 'https://cdn-icons-png.flaticon.com/512/5787/5787089.png', // Tapas
+  'default': 'https://cdn-icons-png.flaticon.com/512/1046/1046784.png', // Generic restaurant
+};
+
+// Get icon URL based on cuisine type
+const getCuisineIconUrl = (cuisine: string): string => {
+  const lowerCuisine = cuisine.toLowerCase();
+
+  // Check for exact match first
+  if (CUISINE_ICONS[lowerCuisine]) {
+    return CUISINE_ICONS[lowerCuisine];
+  }
+
+  // Check if any keyword is contained in the cuisine string
+  for (const [keyword, url] of Object.entries(CUISINE_ICONS)) {
+    if (lowerCuisine.includes(keyword) || keyword.includes(lowerCuisine)) {
+      return url;
+    }
+  }
+
+  return CUISINE_ICONS['default'];
+};
+
+// Create cuisine-based icon
+const createCuisineIcon = (cuisine: string) => {
+  const iconUrl = getCuisineIconUrl(cuisine);
+  return L.divIcon({
+    className: 'cuisine-marker',
+    html: `
+      <div style="
+        width: 44px;
+        height: 44px;
+        background: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+        border: 3px solid #f59e0b;
+      ">
+        <img 
+          src="${iconUrl}" 
+          style="width: 28px; height: 28px;"
+          onerror="this.src='https://cdn-icons-png.flaticon.com/512/1046/1046784.png'"
+        />
+      </div>
+    `,
+    iconSize: [44, 44],
+    iconAnchor: [22, 44],
+    popupAnchor: [0, -44],
+  });
+};
+
+// Fallback search result icon
 const searchResultIcon = new L.Icon({
-  iconUrl: 'https://cdn-icons-png.flaticon.com/512/1046/1046784.png', // Colorful restaurant plate icon
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/1046/1046784.png',
   iconSize: [40, 40],
   iconAnchor: [20, 40],
   popupAnchor: [0, -40],
@@ -321,7 +407,7 @@ const StreetView: React.FC = () => {
             <Marker
               key={`search-${index}-${restaurant.name}`}
               position={[restaurant.geolocation.latitude, restaurant.geolocation.longitude]}
-              icon={searchResultIcon}
+              icon={restaurant.cuisine ? createCuisineIcon(restaurant.cuisine) : searchResultIcon}
               eventHandlers={{
                 click: () => setSelectedRestaurant(restaurant),
               }}

@@ -22,12 +22,12 @@ class Geolocation(BaseModel):
 
 class RestaurantResult(BaseModel):
     name: str
-    address: str
-    cuisine: str
-    rating: float = Field(..., ge=0.0, le=5.0)
-    match_score: float = Field(..., ge=0.0, le=10.0)
-    match_criteria: list[str]
-    price_range: str
+    address: str = "Not available"
+    cuisine: str = "Not specified"
+    rating: float = 0.0
+    match_score: float = 5.0
+    match_criteria: list[str] = []
+    price_range: str = "Unknown"
     url: str
     phone: str | None = None
     geolocation: Geolocation

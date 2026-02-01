@@ -22,6 +22,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
     onClearError,
     autoStartRecording = false,
 }) => {
+    const [query, setQuery] = useState('');
     const [validationError, setValidationError] = useState<string | null>(null);
     const hasAutoStarted = useRef(false);
 
@@ -41,7 +42,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
     useEffect(() => {
         if (autoStartRecording && !hasAutoStarted.current && !isRecording && !isConnecting) {
             hasAutoStarted.current = true;
-            // Small delay to ensure component is fully mounted
             const timer = setTimeout(() => {
                 startRecording();
             }, 500);
@@ -49,33 +49,39 @@ const SearchBar: React.FC<SearchBarProps> = ({
         }
     }, [autoStartRecording, isRecording, isConnecting, startRecording]);
 
-    // New mic click behavior: stop → submit merged transcript → clear → restart
+    // Handle text form submission
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        const trimmedQuery = query.trim();
+        if (!trimmedQuery) {
+            setValidationError('Please enter a search query');
+            return;
+        }
+
+        setValidationError(null);
+        onClearError();
+        await onSearch(trimmedQuery);
+        setQuery(''); // Clear after search
+    };
+
+    // Mic click: stop → submit merged transcript → clear → restart
     const handleMicClick = useCallback(async () => {
         if (isRecording) {
-            // Stop recording first
             stopRecording();
-
-            // Get merged transcript from all speakers
             const mergedQuery = getMergedTranscript().trim();
 
-            // If there's a query, submit it
             if (mergedQuery) {
                 setValidationError(null);
                 onClearError();
-
-                // Submit the search
                 await onSearch(mergedQuery);
             }
 
-            // Clear the transcript bubbles
             clearTranscripts();
-
-            // Restart recording after a brief delay
             setTimeout(async () => {
                 await startRecording();
             }, 300);
         } else {
-            // If not recording (edge case), just start
             clearTranscripts();
             await startRecording();
         }
@@ -89,7 +95,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
         clearVoiceError();
     };
 
-    // Check if there are any transcripts to display
     const hasTranscripts = speakerTranscripts.size > 0 &&
         Array.from(speakerTranscripts.values()).some(t => t.trim().length > 0);
 
@@ -136,19 +141,22 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 </div>
             )}
 
-            {/* Search bar - minimal when recording */}
-            <div className="relative">
+            {/* Search bar with text input */}
+            <form onSubmit={handleSubmit} className="relative">
                 <div className="flex items-center gap-2 bg-gray-900/90 backdrop-blur-xl rounded-full shadow-2xl border border-gray-700/50 p-2 transition-all duration-300 focus-within:border-indigo-500/50 focus-within:shadow-indigo-500/10">
                     <div className="flex-1 flex items-center gap-3 pl-4">
                         <Search className="text-gray-400 flex-shrink-0" size={20} />
-                        <div className="w-full text-gray-500 text-base">
-                            {isRecording
-                                ? (hasTranscripts ? 'Click mic to search...' : 'Speak your search...')
-                                : 'Voice search enabled'}
-                        </div>
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder={isRecording ? "Or type your search..." : "Search restaurants..."}
+                            className="w-full bg-transparent text-white placeholder-gray-500 text-base outline-none"
+                            disabled={isLoading}
+                        />
                     </div>
 
-                    {/* Microphone button - main action button */}
+                    {/* Microphone button */}
                     <button
                         type="button"
                         onClick={handleMicClick}
@@ -174,24 +182,34 @@ const SearchBar: React.FC<SearchBarProps> = ({
                         )}
                     </button>
 
-                    {/* Search button - shows loading state */}
-                    {isLoading && (
-                        <div className="flex items-center justify-center gap-2 bg-indigo-600/50 text-white font-medium px-6 py-3 rounded-full">
-                            <Loader2 size={18} className="animate-spin" />
-                            <span>Searching...</span>
-                        </div>
-                    )}
+                    {/* Search button */}
+                    <button
+                        type="submit"
+                        disabled={isLoading || !query.trim()}
+                        className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 disabled:cursor-not-allowed text-white font-medium px-6 py-3 rounded-full transition-all duration-200 shadow-lg hover:shadow-indigo-500/25"
+                    >
+                        {isLoading ? (
+                            <>
+                                <Loader2 size={18} className="animate-spin" />
+                                <span>Searching...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Search size={18} />
+                                <span>Search</span>
+                            </>
+                        )}
+                    </button>
                 </div>
-            </div>
+            </form>
 
             {/* Hint text */}
             <p className="mt-3 text-center text-gray-500 text-xs">
-                {isRecording
-                    ? 'Speak your search • Click mic to search • Multiple speakers supported'
-                    : 'Voice recording will auto-start • Click mic to search'}
+                Type or speak your search • Voice recording auto-starts • Multiple speakers supported
             </p>
         </div>
     );
 };
 
 export default SearchBar;
+

@@ -8,13 +8,6 @@ export const CHAMPS_ELYSEES_COORDS: Coordinate = {
 // Mock locations around Champs-Élysées
 export const LOCATIONS: LocationMarker[] = [
   {
-    id: '1',
-    name: 'Ladurée',
-    type: 'restaurant',
-    position: { lat: 48.8709, lng: 2.3033 },
-    description: 'Famous luxury bakery known for the best macarons in Paris.'
-  },
-  {
     id: '2',
     name: 'Arc de Triomphe',
     type: 'landmark',

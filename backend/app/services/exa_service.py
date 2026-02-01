@@ -1,13 +1,19 @@
+import json
 import os
 from typing import Any
 
-from exa_py import Exa
+import httpx
 
-LOCATION="Champs-Élysées, Paris, France"
+LOCATION = "Champs-Élysées, Paris, France"
+PARIS_LAT = 48.8566
+PARIS_LON = 2.3522
+GEO_TOLERANCE = 2.0  # +-2 degrees
 
 SYSTEM_PROMPT = "Search for restaurants in " + LOCATION + " based on the user specified constraints. Return the restaurant's phone number if available."
 
-RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
+# Fast search schema - only extracts name and coordinates
+FAST_SEARCH_SCHEMA: dict[str, Any] = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
         "restaurants": {
@@ -51,73 +57,103 @@ RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
             },
         },
     },
-    "required": ["restaurants"],
+    "required": ["name", "latitude", "longitude"],
 }
+
+
+def is_valid_location(lat: float, lon: float) -> bool:
+    """Check if coordinates are within +-2 degrees of Paris and not 0,0"""
+    return (
+        abs(lat - PARIS_LAT) <= GEO_TOLERANCE
+        and abs(lon - PARIS_LON) <= GEO_TOLERANCE
+        and lat != 0.0
+        and lon != 0.0
+    )
 
 
 class ExaService:
     def __init__(self) -> None:
-        api_key = os.getenv("EXA_API_KEY")
-        if not api_key:
+        self.api_key = os.getenv("EXA_API_KEY")
+        if not self.api_key:
             raise ValueError("EXA_API_KEY environment variable is not set")
-        self.client = Exa(api_key=api_key)
 
-    def create_research(
+    async def fast_search(
         self,
         user_prompt: str,
-        model: str = "exa-research",
-    ) -> dict[str, Any]:
-        """Start an Exa research task and return its ID."""
-        instructions = f"{SYSTEM_PROMPT}\n\n{user_prompt}"
-
-        try:
-            task = self.client.research.create_task(
-                instructions=instructions,
-                model=model,
-                output_schema=RESTAURANT_OUTPUT_SCHEMA,
-            )
-            return {"research_id": task.id}
-        except Exception as e:
-            raise RuntimeError(f"Exa research creation failed: {e}") from e
-
-    def get_research(
-        self,
-        research_id: str,
-    ) -> dict[str, Any]:
-        """Fetch an Exa research task by ID and return its current state."""
-        try:
-            task = self.client.research.get_task(research_id)
-
-            result: dict[str, Any] = {
-                "research_id": task.id,
-                "status": task.status,
-            }
-
-            if task.data is not None:
-                result["data"] = task.data
-
-            return result
-        except Exception as e:
-            raise RuntimeError(f"Exa research retrieval failed: {e}") from e
-
-    def research_sync(
-        self,
-        user_prompt: str,
-        model: str = "exa-research",
+        num_results: int = 10,
     ) -> list[dict[str, Any]]:
-        """Create a research task, poll until done, and return restaurants list."""
-        task_info = self.create_research(user_prompt, model=model)
-        research_id: str = task_info["research_id"]
+        """Fast search using Exa Search API - returns results quickly with basic info."""
+        query = f"{user_prompt} near {LOCATION}"
+
+        payload = {
+            "query": query,
+            "type": "fast",
+            "num_results": num_results,
+            "livecrawl": "never",
+            "contents": {
+                "summary": {
+                    "query": "Extract restaurant/cafe name, latitude and longitude",
+                    "schema": FAST_SEARCH_SCHEMA,
+                }
+            },
+        }
 
         try:
-            task = self.client.research.poll_task(research_id)
-        except TimeoutError:
-            raise
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    EXA_API_URL,
+                    json=payload,
+                    headers={"x-api-key": self.api_key},
+                )
+                response.raise_for_status()
+                data = response.json()
+        except httpx.TimeoutException as e:
+            raise TimeoutError(f"Exa fast search timed out: {e}") from e
         except Exception as e:
-            raise RuntimeError(f"Exa research polling failed: {e}") from e
+            raise RuntimeError(f"Exa fast search failed: {e}") from e
 
-        data = task.data or {}
-        return data.get("restaurants", [])
+        # Transform and filter results
+        restaurants: list[dict[str, Any]] = []
+        for result in data.get("results", []):
+            transformed = self._transform_result(result)
+            if transformed:
+                restaurants.append(transformed)
+
+        return restaurants
+
+    def _transform_result(self, raw_result: dict[str, Any]) -> dict[str, Any] | None:
+        """Transform raw Exa result to RestaurantResult format."""
+        try:
+            summary_text = raw_result.get("summary", "{}")
+            summary = json.loads(summary_text)
+        except json.JSONDecodeError:
+            return None
+
+        lat = summary.get("latitude", 0.0)
+        lon = summary.get("longitude", 0.0)
+
+        # Filter out invalid geolocations
+        if not is_valid_location(lat, lon):
+            return None
+
+        title = raw_result.get("title", "")
+        name = summary.get("name") or title or "Unknown"
+        url = raw_result.get("url", "")
+
+        return {
+            "name": name,
+            "address": "Not available",
+            "cuisine": "Not specified",
+            "rating": 0.0,
+            "match_score": 5.0,
+            "match_criteria": [],
+            "price_range": "Unknown",
+            "url": url,
+            "geolocation": {
+                "latitude": lat,
+                "longitude": lon,
+            },
+        }
 
 
 def get_exa_service() -> ExaService:
