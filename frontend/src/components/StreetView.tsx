@@ -456,6 +456,7 @@ const StreetView: React.FC = () => {
         error={error}
         resultCount={resultCount}
         onClearError={handleClearError}
+        autoStartRecording={true}
       />
     </div>
   );
