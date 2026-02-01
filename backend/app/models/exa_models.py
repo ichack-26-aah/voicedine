@@ -8,12 +8,17 @@ from pydantic import BaseModel, Field
 class ResearchCreateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, description="User search query / constraints")
     model: str = Field(
-        "exa-research-fast",
-        description="Research model: exa-research-fast, exa-research, or exa-research-pro",
+        "exa-research",
+        description="Research model: exa-research or exa-research-pro",
     )
 
 
 # --- Restaurant schema (mirrors the output_schema sent to Exa) ---
+
+class Geolocation(BaseModel):
+    latitude: float
+    longitude: float
+
 
 class RestaurantResult(BaseModel):
     name: str
@@ -24,26 +29,19 @@ class RestaurantResult(BaseModel):
     match_criteria: list[str]
     price_range: str
     url: str
+    geolocation: Geolocation
 
 
 # --- Response models ---
 
 class ResearchCreateResponse(BaseModel):
     research_id: str
-    created_at: str | None = None
-
-
-class ResearchOutput(BaseModel):
-    content: str | None = None
-    parsed: dict[str, Any] | None = None
 
 
 class ResearchGetResponse(BaseModel):
     research_id: str
     status: str
-    output: ResearchOutput | None = None
-    cost_dollars: Any | None = None
-    events: list[Any] | None = None
+    data: dict[str, Any] | None = None
 
 
 class ResearchSyncRequest(BaseModel):
@@ -58,6 +56,6 @@ class RestaurantSearchResponse(BaseModel):
     restaurants: list[RestaurantLocation]
     request_id: str
     model: str = Field(
-        "exa-research-fast",
-        description="Research model: exa-research-fast, exa-research, or exa-research-pro",
+        "exa-research",
+        description="Research model: exa-research or exa-research-pro",
     )
