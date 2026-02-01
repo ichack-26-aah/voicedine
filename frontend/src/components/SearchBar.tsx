@@ -1,12 +1,18 @@
 'use client';
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Search, Loader2, AlertCircle, X, Mic, MicOff } from 'lucide-react';
+import { Search, Loader2, AlertCircle, X, Mic, MicOff, Zap } from 'lucide-react';
 import { useVoiceRecorder } from '@/lib/useVoiceRecorder';
+import { useVoiceLoop } from '@/lib/useVoiceLoop';
 import TranscriptBubbles from './TranscriptBubbles';
+import type { RestaurantResult } from '@/lib/types';
 
 interface SearchBarProps {
     onSearch: (query: string) => Promise<void>;
+    /** Direct callback for when voice loop gets restaurant results - bypasses onSearch */
+    onRestaurantsFound?: (restaurants: RestaurantResult[]) => void;
+    /** Callback for when new requirements are extracted */
+    onRequirementsUpdate?: (requirements: string[]) => void;
     isLoading: boolean;
     error: string | null;
     resultCount: number | null;
@@ -16,6 +22,8 @@ interface SearchBarProps {
 
 const SearchBar: React.FC<SearchBarProps> = ({
     onSearch,
+    onRestaurantsFound,
+    onRequirementsUpdate,
     isLoading,
     error,
     resultCount,
@@ -24,7 +32,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
 }) => {
     const [query, setQuery] = useState('');
     const [validationError, setValidationError] = useState<string | null>(null);
-    const hasAutoStarted = useRef(false);
+    const [autoStartAttempts, setAutoStartAttempts] = useState(0);
+    // Note: requirements are managed in useVoiceLoop, we just get them via callback
 
     const {
         isRecording,
@@ -36,18 +45,73 @@ const SearchBar: React.FC<SearchBarProps> = ({
         clearTranscripts,
         getMergedTranscript,
         clearError: clearVoiceError,
+        getDeltaTranscript,
+        getFullTranscript,
     } = useVoiceRecorder();
+
+    // Voice loop for continuous processing
+    const {
+        isLoopActive,
+        isProcessing,
+        startLoop,
+        stopLoop,
+        requirements: extractedRequirements,
+        lastError: loopError,
+        cycleCount,
+    } = useVoiceLoop({
+        getDeltaTranscript,
+        getFullTranscript,
+        onRequirementsExtracted: (allReqs) => {
+            console.log('[SearchBar] All requirements:', allReqs);
+            // Update local state with requirement texts for display
+            const reqTexts = allReqs.map(r => 
+                r.speaker ? `${r.requirement} [${r.speaker}]` : r.requirement
+            );
+            setRequirements(reqTexts); // Replace, don't append (useVoiceLoop manages master list)
+            if (onRequirementsUpdate) {
+                onRequirementsUpdate(reqTexts);
+            }
+        },
+        onExaResults: (restaurants) => {
+            console.log('[SearchBar] Exa results received:', restaurants.length);
+            // Directly update parent's restaurant state via callback
+            if (onRestaurantsFound) {
+                onRestaurantsFound(restaurants);
+            }
+        },
+        onError: (err) => {
+            console.error('[VoiceLoop] Error:', err);
+        },
+        initialDelayMs: 10000,
+        cycleIntervalMs: 10000, // 10 seconds between cycles
+    });
 
     // Auto-start recording when component mounts (if enabled)
     useEffect(() => {
-        if (autoStartRecording && !hasAutoStarted.current && !isRecording && !isConnecting) {
-            hasAutoStarted.current = true;
+        const MAX_ATTEMPTS = 3;
+        
+        if (autoStartRecording && !isRecording && !isConnecting && autoStartAttempts < MAX_ATTEMPTS) {
+            // Progressive delay: 500ms, 1500ms, 2500ms
+            const delay = 500 + (autoStartAttempts * 1000);
+            
             const timer = setTimeout(() => {
-                startRecording();
-            }, 500);
+                console.log(`[SearchBar] Auto-start attempt ${autoStartAttempts + 1}/${MAX_ATTEMPTS}`);
+                startRecording().catch(err => {
+                    console.error("[SearchBar] Auto-start attempt failed:", err);
+                });
+                setAutoStartAttempts(prev => prev + 1);
+            }, delay);
             return () => clearTimeout(timer);
         }
-    }, [autoStartRecording, isRecording, isConnecting, startRecording]);
+    }, [autoStartRecording, isRecording, isConnecting, startRecording, autoStartAttempts]);
+
+    // Start voice loop once recording is active
+    useEffect(() => {
+        if (autoStartRecording && isRecording && !isLoopActive) {
+            console.log('[SearchBar] Recording active, starting voice loop...');
+            startLoop();
+        }
+    }, [autoStartRecording, isRecording, isLoopActive, startLoop]);
 
     // Handle text form submission
     const handleSubmit = async (e: React.FormEvent) => {
@@ -65,10 +129,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
         setQuery(''); // Clear after search
     };
 
-    // Mic click: stop → submit merged transcript → clear → restart
+    // Mic click: stop → submit merged transcript → clear transcripts only (keep requirements) → restart
     const handleMicClick = useCallback(async () => {
         if (isRecording) {
             stopRecording();
+            stopLoop();
             const mergedQuery = getMergedTranscript().trim();
 
             if (mergedQuery) {
@@ -77,17 +142,20 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 await onSearch(mergedQuery);
             }
 
+            // Only clear transcripts, NOT requirements - useVoiceLoop keeps the master list
             clearTranscripts();
             setTimeout(async () => {
                 await startRecording();
+                startLoop();
             }, 300);
         } else {
             clearTranscripts();
             await startRecording();
+            startLoop();
         }
-    }, [isRecording, stopRecording, getMergedTranscript, onSearch, onClearError, startRecording, clearTranscripts]);
+    }, [isRecording, stopRecording, stopLoop, getMergedTranscript, onSearch, onClearError, startRecording, startLoop, clearTranscripts]);
 
-    const displayError = validationError || error || voiceError;
+    const displayError = validationError || error || voiceError || loopError;
 
     const handleClearError = () => {
         setValidationError(null);
@@ -100,6 +168,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
     return (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-2xl px-4">
+            
             {/* Results count */}
             {resultCount !== null && !isLoading && (
                 <div className="mb-3 text-center">
@@ -115,8 +184,18 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 <TranscriptBubbles speakerTranscripts={speakerTranscripts} />
             )}
 
+            {/* Voice Loop Status - Only show when processing */}
+            {isLoopActive && isProcessing && (
+                <div className="mb-3 text-center">
+                    <span className="inline-flex items-center gap-2 bg-indigo-500/20 backdrop-blur-md text-indigo-300 text-xs font-medium px-3 py-1.5 rounded-full border border-indigo-500/30">
+                        <span className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" />
+                        Processing with Grok...
+                    </span>
+                </div>
+            )}
+
             {/* Recording indicator */}
-            {(isRecording || isConnecting) && !hasTranscripts && (
+            {(isRecording || isConnecting) && !hasTranscripts && !isLoopActive && (
                 <div className="mb-3 text-center">
                     <span className="inline-flex items-center gap-2 bg-red-500/20 backdrop-blur-md text-red-300 text-sm font-medium px-4 py-2 rounded-full border border-red-500/30 animate-pulse">
                         <span className="w-2 h-2 bg-red-500 rounded-full" />
@@ -205,7 +284,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
             {/* Hint text */}
             <p className="mt-3 text-center text-gray-500 text-xs">
-                Type or speak your search • Voice recording auto-starts • Multiple speakers supported
+                {isLoopActive 
+                    ? 'Continuous voice mode active • Requirements auto-extracted every cycle'
+                    : 'Type or speak your search • Voice recording auto-starts • Multiple speakers supported'
+                }
             </p>
         </div>
     );

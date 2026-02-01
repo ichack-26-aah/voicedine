@@ -44,4 +44,20 @@ export const apiClient = {
 
   healthCheck: () =>
     request<{ status: string }>("/health", { cache: "no-store" }),
+
+  // Grok requirement extraction
+  extractRequirements: (
+    transcript: string,
+    existingRequirements?: string[]
+  ) =>
+    request<{ requirements: string[]; success: boolean; error?: string }>(
+      "/api/grok/extract",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          transcript,
+          existing_requirements: existingRequirements,
+        }),
+      }
+    ),
 };

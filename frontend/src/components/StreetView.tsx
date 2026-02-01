@@ -100,6 +100,66 @@ const getCuisineIconUrl = (cuisine: string): string => {
   return CUISINE_ICONS['default'];
 };
 
+// Extract domain from URL for favicon
+const extractDomain = (url: string): string | null => {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname;
+  } catch {
+    return null;
+  }
+};
+
+// Get favicon URL using Google's favicon service
+const getFaviconUrl = (url: string, size: number = 64): string | null => {
+  const domain = extractDomain(url);
+  if (!domain) return null;
+  // Google's favicon service provides high-quality favicons
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=${size}`;
+};
+
+// Create favicon-based marker icon with fallback to cuisine icon
+const createFaviconIcon = (url: string, cuisine: string) => {
+  const faviconUrl = getFaviconUrl(url, 64);
+  const fallbackUrl = getCuisineIconUrl(cuisine);
+  
+  return L.divIcon({
+    className: 'favicon-marker',
+    html: `
+      <div style="
+        width: 48px;
+        height: 48px;
+        background: white;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        border: 3px solid #6366f1;
+        overflow: hidden;
+        position: relative;
+      ">
+        <img 
+          src="${faviconUrl || fallbackUrl}" 
+          style="width: 32px; height: 32px; object-fit: contain;"
+          onerror="this.onerror=null; this.src='${fallbackUrl}';"
+        />
+      </div>
+      <div style="
+        width: 0;
+        height: 0;
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-top: 10px solid #6366f1;
+        margin: -2px auto 0;
+      "></div>
+    `,
+    iconSize: [48, 58],
+    iconAnchor: [24, 58],
+    popupAnchor: [0, -58],
+  });
+};
+
 // Create cuisine-based icon
 const createCuisineIcon = (cuisine: string) => {
   const iconUrl = getCuisineIconUrl(cuisine);
@@ -246,6 +306,7 @@ const StreetView: React.FC = () => {
   const [selectedRestaurant, setSelectedRestaurant] = useState<RestaurantResult | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [routeDistance, setRouteDistance] = useState<number | null>(null);
+  const [activeRequirements, setActiveRequirements] = useState<string[]>([]);
 
   // Fetch route from OSRM when a restaurant is selected
   useEffect(() => {
@@ -407,7 +468,7 @@ const StreetView: React.FC = () => {
             <Marker
               key={`search-${index}-${restaurant.name}`}
               position={[restaurant.geolocation.latitude, restaurant.geolocation.longitude]}
-              icon={restaurant.cuisine ? createCuisineIcon(restaurant.cuisine) : searchResultIcon}
+              icon={restaurant.url ? createFaviconIcon(restaurant.url, restaurant.cuisine || 'default') : (restaurant.cuisine ? createCuisineIcon(restaurant.cuisine) : searchResultIcon)}
               eventHandlers={{
                 click: () => setSelectedRestaurant(restaurant),
               }}
@@ -507,9 +568,25 @@ const StreetView: React.FC = () => {
           <MapPin className="text-indigo-400" />
           <h2 className="text-xl font-bold text-white">Avenue des Champs-Élysées</h2>
         </div>
-        <p className="text-gray-400 text-sm mb-4">
-          Explore the world&apos;s most beautiful avenue in Paris. Click markers for details or follow the purple path for a scenic walk.
-        </p>
+        <div className="text-gray-400 text-sm mb-4">
+          {activeRequirements.length > 0 ? (
+            <div className="space-y-1">
+              <p className="font-semibold text-indigo-300 mb-1">Latest Filter:</p>
+              {/* Show only the most recent requirement */}
+              <p className="flex items-start gap-2">
+                <span className="text-indigo-500 mt-1">•</span>
+                <span>{activeRequirements[activeRequirements.length - 1]}</span>
+              </p>
+              {activeRequirements.length > 1 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  ({activeRequirements.length} total criteria active)
+                </p>
+              )}
+            </div>
+          ) : (
+             <p>Explore the world&apos;s most beautiful avenue in Paris. Start speaking to filter restaurants.</p>
+          )}
+        </div>
       </div>
 
       {/* Legend */}
@@ -538,6 +615,18 @@ const StreetView: React.FC = () => {
       {/* Search Bar */}
       <SearchBar
         onSearch={handleSearch}
+        onRequirementsUpdate={setActiveRequirements}
+        onRestaurantsFound={(results) => {
+          // Direct update from voice loop - bypasses search flow
+          const validResults = results.filter(
+            r => r.geolocation &&
+              typeof r.geolocation.latitude === 'number' &&
+              typeof r.geolocation.longitude === 'number'
+          );
+          setRestaurants(validResults);
+          setResultCount(validResults.length);
+          setSelectedRestaurant(null);
+        }}
         isLoading={isLoading}
         error={error}
         resultCount={resultCount}

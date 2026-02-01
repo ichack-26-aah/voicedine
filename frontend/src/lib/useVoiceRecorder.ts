@@ -20,6 +20,10 @@ interface UseVoiceRecorderReturn {
     clearTranscripts: () => void;
     getMergedTranscript: () => string;
     clearError: () => void;
+    /** Get new transcript text since last call (delta tracking) */
+    getDeltaTranscript: () => string;
+    /** Get the full transcript history */
+    getFullTranscript: () => string;
 }
 
 export function useVoiceRecorder(
@@ -34,9 +38,18 @@ export function useVoiceRecorder(
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const processorRef = useRef<ScriptProcessorNode | null>(null);
+    const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    
+    // Delta tracking: store all transcript text and track last read position
+    const fullTranscriptRef = useRef<string>('');
+    const lastDeltaIndexRef = useRef<number>(0);
 
     // Cleanup function
     const cleanup = useCallback(() => {
+        if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+        }
         if (processorRef.current) {
             processorRef.current.disconnect();
             processorRef.current = null;
@@ -88,8 +101,24 @@ export function useVoiceRecorder(
             const ws = new WebSocket(`${WS_URL}/ws/transcribe`);
             wsRef.current = ws;
 
-            ws.onopen = () => {
+            // Set a strict timeout for connection
+            connectionTimeoutRef.current = setTimeout(() => {
+                if (ws.readyState !== WebSocket.OPEN) {
+                    console.error('WebSocket connection timed out');
+                    ws.close();
+                    setError('Connection timed out');
+                    setIsConnecting(false);
+                    cleanup();
+                }
+            }, 5000);
+
+            ws.onopen = async () => {
                 console.log('WebSocket connected');
+                if (connectionTimeoutRef.current) {
+                    clearTimeout(connectionTimeoutRef.current);
+                    connectionTimeoutRef.current = null;
+                }
+                
                 // Send config
                 ws.send(JSON.stringify({
                     type: 'config',
@@ -98,6 +127,9 @@ export function useVoiceRecorder(
 
                 // Set up audio processing
                 const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
                 audioContextRef.current = audioContext;
 
                 const source = audioContext.createMediaStreamSource(stream);
@@ -132,6 +164,10 @@ export function useVoiceRecorder(
                         const speakerId = data.speaker_id ?? 0;
 
                         if (newText) {
+                            // Append to full transcript with speaker label for delta tracking
+                            const labeledText = `[Speaker ${speakerId}]: ${newText}`;
+                            fullTranscriptRef.current += (fullTranscriptRef.current ? ' ' : '') + labeledText;
+
                             setSpeakerTranscripts(prev => {
                                 const updated = new Map(prev);
                                 const existing = updated.get(speakerId) || '';
@@ -187,6 +223,9 @@ export function useVoiceRecorder(
 
     const clearTranscripts = useCallback(() => {
         setSpeakerTranscripts(new Map());
+        // Also reset delta tracking
+        fullTranscriptRef.current = '';
+        lastDeltaIndexRef.current = 0;
     }, []);
 
     const getMergedTranscript = useCallback(() => {
@@ -204,6 +243,26 @@ export function useVoiceRecorder(
         setError(null);
     }, []);
 
+    // Get delta transcript - new text since last call
+    const getDeltaTranscript = useCallback(() => {
+        const fullText = fullTranscriptRef.current;
+        const lastIndex = lastDeltaIndexRef.current;
+        
+        if (lastIndex >= fullText.length) {
+            return '';
+        }
+        
+        const delta = fullText.slice(lastIndex).trim();
+        lastDeltaIndexRef.current = fullText.length;
+        
+        return delta;
+    }, []);
+
+    // Get full transcript without advancing cursor
+    const getFullTranscript = useCallback(() => {
+        return fullTranscriptRef.current;
+    }, []);
+
     return {
         isRecording,
         isConnecting,
@@ -214,5 +273,7 @@ export function useVoiceRecorder(
         clearTranscripts,
         getMergedTranscript,
         clearError,
+        getDeltaTranscript,
+        getFullTranscript,
     };
 }

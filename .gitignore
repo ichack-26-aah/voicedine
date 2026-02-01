@@ -33,3 +33,5 @@ out/
 # Logs
 *.log
 npm-debug.log*
+nul
+.gitignore

@@ -43,3 +43,24 @@ export interface RestaurantResult {
   url: string;
   geolocation: Geolocation;
 }
+
+// Grok API types for requirement extraction
+export interface GrokExtractRequest {
+  transcript: string;
+  existing_requirements?: string[];
+  speaker_labels?: Record<number, string>;
+}
+
+export interface GrokExtractResponse {
+  requirements: string[];
+  success: boolean;
+  error?: string;
+}
+
+// Voice loop types
+export interface RequirementItem {
+  id: string;
+  text: string;
+  speaker: string;
+  timestamp: number;
+}

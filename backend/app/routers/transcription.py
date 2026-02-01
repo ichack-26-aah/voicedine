@@ -245,6 +245,11 @@ async def websocket_transcribe(websocket: WebSocket):
 
     except WebSocketDisconnect:
         print("Client disconnected")
+    except RuntimeError as e:
+        if "disconnect message has been received" in str(e):
+             print("Client disconnected (RuntimeError catch)")
+        else:
+             print(f"WebSocket Runtime error: {e}")
     except Exception as e:
         print(f"WebSocket error: {type(e).__name__}: {e}")
         try:
