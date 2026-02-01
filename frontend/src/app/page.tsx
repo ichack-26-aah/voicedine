@@ -35,6 +35,7 @@ export default function Home() {
     error,
     startRecording,
     stopRecording,
+    transcript,
   } = useLiveScribe({
     onVolumeChange: setVolume,
     onError: (err) => console.error('❌ Transcription error:', err),
@@ -98,7 +99,10 @@ export default function Home() {
       {/* Live Map Container */}
       {viewState === ViewState.LIVE_MAP && (
         <div className="absolute inset-0 z-10">
-          <LiveMap onBack={resetView} />
+          <LiveMap
+            onBack={resetView}
+            transcript={transcript.map(s => s.text).join(' ')}
+          />
         </div>
       )}
 
