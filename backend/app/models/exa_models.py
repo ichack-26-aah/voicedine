@@ -29,6 +29,7 @@ class RestaurantResult(BaseModel):
     match_criteria: list[str] = []
     price_range: str = "Unknown"
     url: str
+    phone: str | None = None
     geolocation: Geolocation
 
 

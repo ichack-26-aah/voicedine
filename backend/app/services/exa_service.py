@@ -9,16 +9,53 @@ PARIS_LAT = 48.8566
 PARIS_LON = 2.3522
 GEO_TOLERANCE = 2.0  # +-2 degrees
 
-EXA_API_URL = "https://api.exa.ai/search"
+SYSTEM_PROMPT = "Search for restaurants in " + LOCATION + " based on the user specified constraints. Return the restaurant's phone number if available."
 
 # Fast search schema - only extracts name and coordinates
 FAST_SEARCH_SCHEMA: dict[str, Any] = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-        "name": {"type": "string", "description": "Restaurant/cafe name"},
-        "latitude": {"type": "number", "description": "Latitude coordinate"},
-        "longitude": {"type": "number", "description": "Longitude coordinate"},
+        "restaurants": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "address": {"type": "string"},
+                    "cuisine": {"type": "string"},
+                    "rating": {"type": "number"},
+                    "match_score": {"type": "number"},
+                    "match_criteria": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "price_range": {"type": "string"},
+                    "url": {"type": "string"},
+                    "phone": {"type": "string"},
+                    "geolocation": {
+                        "type": "object",
+                        "properties": {
+                            "latitude": {"type": "number"},
+                            "longitude": {"type": "number"},
+                        },
+                        "required": ["latitude", "longitude"],
+                    },
+                },
+                "required": [
+                    "name",
+                    "address",
+                    "cuisine",
+                    "rating",
+                    "match_score",
+                    "match_criteria",
+                    "price_range",
+                    "url",
+                    "geolocation",
+                    # "phone" is optional depending on Exa's finding, so we don't strictly require it
+                ],
+            },
+        },
     },
     "required": ["name", "latitude", "longitude"],
 }

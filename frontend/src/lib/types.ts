@@ -41,5 +41,6 @@ export interface RestaurantResult {
   match_criteria: string[];
   price_range: string;
   url: string;
+  phone?: string;
   geolocation: Geolocation;
 }
