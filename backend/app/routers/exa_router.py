@@ -5,6 +5,7 @@ from app.models.exa_models import (
     ResearchCreateResponse,
     ResearchGetResponse,
     ResearchSyncRequest,
+    RestaurantResult,
 )
 from app.services.exa_service import ExaService, get_exa_service
 
@@ -30,17 +31,17 @@ async def create_research(
         raise HTTPException(status_code=500, detail=f"Internal error: {e}") from e
 
 
-@router.post("/research/sync", response_model=ResearchGetResponse)
+@router.post("/research/sync", response_model=list[RestaurantResult])
 async def research_sync(
     request: ResearchSyncRequest,
     exa: ExaService = Depends(get_exa_service),
-) -> ResearchGetResponse:
+) -> list[RestaurantResult]:
     try:
-        data = exa.research_sync(
+        restaurants = exa.research_sync(
             user_prompt=request.prompt,
             model=request.model,
         )
-        return ResearchGetResponse(**data)
+        return [RestaurantResult(**r) for r in restaurants]
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except TimeoutError as e:

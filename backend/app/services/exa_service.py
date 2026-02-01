@@ -108,8 +108,8 @@ class ExaService:
         model: str = "exa-research-fast",
         poll_interval: float = 2.0,
         timeout: float = 120.0,
-    ) -> dict[str, Any]:
-        """Create a research task, poll until done, and return parsed output."""
+    ) -> list[dict[str, Any]]:
+        """Create a research task, poll until done, and return restaurants list."""
         task_data = self.create_research(user_prompt, model=model)
         research_id: str = task_data["research_id"]
 
@@ -117,7 +117,8 @@ class ExaService:
         while elapsed < timeout:
             result = self.get_research(research_id)
             if result["status"] == "completed":
-                return result
+                parsed = (result.get("output") or {}).get("parsed") or {}
+                return parsed.get("restaurants", [])
             time.sleep(poll_interval)
             elapsed += poll_interval
 
