@@ -31,6 +31,7 @@ RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
                             "longitude": {"type": "number"},
                         },
                         "required": ["latitude", "longitude"],
+                    },
                 },
                 "required": [
                     "name",
@@ -43,7 +44,6 @@ RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
                     "url",
                     "geolocation",
                 ],
-                }
             },
         },
     },

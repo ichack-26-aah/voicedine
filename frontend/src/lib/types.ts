@@ -17,3 +17,21 @@ export interface RouteData {
   path: Coordinate[];
   color: string;
 }
+
+// Exa API restaurant search types
+export interface Geolocation {
+  latitude: number;
+  longitude: number;
+}
+
+export interface RestaurantResult {
+  name: string;
+  address: string;
+  cuisine: string;
+  rating: number;
+  match_score: number;
+  match_criteria: string[];
+  price_range: string;
+  url: string;
+  geolocation: Geolocation;
+}
