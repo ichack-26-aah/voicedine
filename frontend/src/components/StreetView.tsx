@@ -44,9 +44,50 @@ const landmarkIcon = new L.Icon({
   popupAnchor: [0, -32],
 });
 
-// Search result restaurant icon - bright and distinctive food icon
+// Helper to get favicon URL from DuckDuckGo API
+const getFaviconUrl = (url: string): string => {
+  try {
+    const parsed = new URL(url);
+    const domain = parsed.hostname.replace('www.', '');
+    return `https://icons.duckduckgo.com/ip3/${domain}.ico`;
+  } catch {
+    return 'https://cdn-icons-png.flaticon.com/512/1046/1046784.png'; // Fallback
+  }
+};
+
+// Create dynamic icon from favicon URL
+const createFaviconIcon = (url: string) => {
+  const faviconUrl = getFaviconUrl(url);
+  return L.divIcon({
+    className: 'favicon-marker',
+    html: `
+      <div style="
+        width: 40px;
+        height: 40px;
+        background: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        border: 2px solid #f59e0b;
+      ">
+        <img 
+          src="${faviconUrl}" 
+          style="width: 24px; height: 24px; border-radius: 4px;"
+          onerror="this.src='https://cdn-icons-png.flaticon.com/512/1046/1046784.png'"
+        />
+      </div>
+    `,
+    iconSize: [40, 40],
+    iconAnchor: [20, 40],
+    popupAnchor: [0, -40],
+  });
+};
+
+// Fallback search result icon
 const searchResultIcon = new L.Icon({
-  iconUrl: 'https://cdn-icons-png.flaticon.com/512/1046/1046784.png', // Colorful restaurant plate icon
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/1046/1046784.png',
   iconSize: [40, 40],
   iconAnchor: [20, 40],
   popupAnchor: [0, -40],
@@ -321,7 +362,7 @@ const StreetView: React.FC = () => {
             <Marker
               key={`search-${index}-${restaurant.name}`}
               position={[restaurant.geolocation.latitude, restaurant.geolocation.longitude]}
-              icon={searchResultIcon}
+              icon={restaurant.url ? createFaviconIcon(restaurant.url) : searchResultIcon}
               eventHandlers={{
                 click: () => setSelectedRestaurant(restaurant),
               }}
