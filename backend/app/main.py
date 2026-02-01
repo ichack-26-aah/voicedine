@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers.exa_router import router as exa_router
+
 load_dotenv()
 
 app = FastAPI(title="VoiceDine API", version="0.1.0")
@@ -17,6 +19,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(exa_router)
 
 
 @app.get("/health")
