@@ -3,7 +3,9 @@ from typing import Any
 
 from exa_py import Exa
 
-SYSTEM_PROMPT = "Search for restaurants in the specified location based on the user specified constraints."
+LOCATION="Champs-Élysées, Paris, France"
+
+SYSTEM_PROMPT = "Search for restaurants in " + LOCATION + " based on the user specified constraints."
 
 RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
