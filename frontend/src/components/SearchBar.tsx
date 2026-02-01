@@ -63,13 +63,13 @@ const SearchBar: React.FC<SearchBarProps> = ({
         getFullTranscript,
         onRequirementsExtracted: (allReqs) => {
             console.log('[SearchBar] All requirements:', allReqs);
-            // Update local state with requirement texts for display
-            const reqTexts = allReqs.map(r => 
+            // Update parent component with requirement texts
+            const reqTexts = allReqs.map(r =>
                 r.speaker ? `${r.requirement} [${r.speaker}]` : r.requirement
             );
-            setRequirements(reqTexts); // Replace, don't append (useVoiceLoop manages master list)
             if (onRequirementsUpdate) {
-                onRequirementsUpdate(reqTexts);
+                // Defer update to avoid render phase state update warning
+                Promise.resolve().then(() => onRequirementsUpdate(reqTexts));
             }
         },
         onExaResults: (restaurants) => {
@@ -185,14 +185,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
             )}
 
             {/* Voice Loop Status - Only show when processing */}
-            {isLoopActive && isProcessing && (
+            {/* {isLoopActive && isProcessing && (
                 <div className="mb-3 text-center">
                     <span className="inline-flex items-center gap-2 bg-indigo-500/20 backdrop-blur-md text-indigo-300 text-xs font-medium px-3 py-1.5 rounded-full border border-indigo-500/30">
                         <span className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" />
                         Processing with Grok...
                     </span>
                 </div>
-            )}
+            )} */
 
             {/* Recording indicator */}
             {(isRecording || isConnecting) && !hasTranscripts && !isLoopActive && (

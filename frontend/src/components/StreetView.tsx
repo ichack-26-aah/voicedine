@@ -7,10 +7,11 @@ import { CHAMPS_ELYSEES_COORDS, LOCATIONS, WALKING_ROUTE } from '@/lib/constants
 
 // User's position - hardcoded to Arc de Triomphe
 const USER_POSITION = { lat: 48.8738, lng: 2.2950 };
-import { RestaurantResult } from '@/lib/types';
+import { RestaurantResult, DishItem } from '@/lib/types';
 import { apiClient } from '@/lib/api';
 import { MapPin } from 'lucide-react';
 import SearchBar from './SearchBar';
+import DishCarousel from './DishCarousel';
 import 'leaflet/dist/leaflet.css';
 
 // Fix for default Leaflet marker icons in React
@@ -307,6 +308,44 @@ const StreetView: React.FC = () => {
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [routeDistance, setRouteDistance] = useState<number | null>(null);
   const [activeRequirements, setActiveRequirements] = useState<string[]>([]);
+  
+  // Dish carousel state - async background Exa call
+  const [dishes, setDishes] = useState<DishItem[]>([]);
+  const [dishesLoading, setDishesLoading] = useState(false);
+
+  // Background Exa call to fetch dishes when a restaurant is selected
+  useEffect(() => {
+    if (!selectedRestaurant) {
+      setDishes([]);
+      setDishesLoading(false);
+      return;
+    }
+
+    const fetchDishes = async () => {
+      setDishesLoading(true);
+      setDishes([]); // Clear previous dishes
+      try {
+        const results = await apiClient.post<DishItem[]>(
+          '/api/exa/dishes',
+          { 
+            restaurantUrl: selectedRestaurant.url, 
+            restaurantName: selectedRestaurant.name,
+            cuisine: selectedRestaurant.cuisine
+          }
+        );
+        if (results && results.length > 0) {
+          setDishes(results);
+        }
+      } catch (err) {
+        console.error('[DishCarousel] Failed to fetch dishes:', err);
+        // Silent fail - don't show error to user, just no dishes
+      } finally {
+        setDishesLoading(false);
+      }
+    };
+
+    fetchDishes();
+  }, [selectedRestaurant]);
 
   // Fetch route from OSRM when a restaurant is selected
   useEffect(() => {
@@ -381,7 +420,10 @@ const StreetView: React.FC = () => {
       setRestaurants(validResults);
       setResultCount(validResults.length);
 
-      if (validResults.length === 0) {
+      // Auto-select the first (topmost) result to show the route
+      if (validResults.length > 0) {
+        setSelectedRestaurant(validResults[0]);
+      } else {
         setError('No restaurants found with valid locations. Try a different search.');
       }
     } catch (err) {
@@ -589,28 +631,14 @@ const StreetView: React.FC = () => {
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="absolute bottom-28 right-4 z-[1000] bg-gray-900/80 backdrop-blur-sm p-3 rounded-lg border border-gray-700 text-xs text-white">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-sm"></span> Your Location
-        </div>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="w-3 h-3 rounded-full bg-[#8b5cf6]"></span> Walking Route
-        </div>
-        <div className="flex items-center gap-2 mb-1">
-          <span className="w-3 h-3 rounded-full bg-gray-400"></span> Locations
-        </div>
-        {restaurants.length > 0 && (
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-3 h-3 rounded-full bg-amber-500"></span> Search Results
-          </div>
-        )}
-        {selectedRestaurant && (
-          <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-cyan-500"></span> Route to Restaurant
-          </div>
-        )}
-      </div>
+      {/* Dish Carousel - shows when a restaurant is selected */}
+      {selectedRestaurant && (
+        <DishCarousel 
+          dishes={dishes} 
+          loading={dishesLoading} 
+          restaurantName={selectedRestaurant.name}
+        />
+      )}
 
       {/* Search Bar */}
       <SearchBar
@@ -625,7 +653,12 @@ const StreetView: React.FC = () => {
           );
           setRestaurants(validResults);
           setResultCount(validResults.length);
-          setSelectedRestaurant(null);
+          // Auto-select the top result
+          if (validResults.length > 0) {
+            setSelectedRestaurant(validResults[0]);
+          } else {
+            setSelectedRestaurant(null);
+          }
         }}
         isLoading={isLoading}
         error={error}

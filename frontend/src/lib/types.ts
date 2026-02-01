@@ -64,3 +64,11 @@ export interface RequirementItem {
   speaker: string;
   timestamp: number;
 }
+
+// Dish item for menu carousel
+export interface DishItem {
+  name: string;
+  price: string;
+  imageUrl?: string;
+  description?: string;
+}

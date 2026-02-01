@@ -50,3 +50,18 @@ class ResearchSyncRequest(BaseModel):
         "exa-research",
         description="Research model: exa-research or exa-research-pro",
     )
+
+
+# --- Dish menu item ---
+
+class DishItem(BaseModel):
+    name: str
+    price: str = ""
+    imageUrl: str | None = None
+    description: str | None = None
+
+
+class DishRequest(BaseModel):
+    restaurantUrl: str = Field(..., description="URL of the restaurant")
+    restaurantName: str = Field(..., description="Name of the restaurant")
+    cuisine: str = Field("", description="Cuisine type for context")

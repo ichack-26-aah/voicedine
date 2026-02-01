@@ -118,6 +118,87 @@ class ExaService:
             },
         }
 
+    async def get_dishes(
+        self,
+        restaurant_url: str,
+        restaurant_name: str,
+        cuisine: str = "",
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch top menu dishes from a restaurant URL using Exa get_contents.
+        """
+        requirements = f"popular dishes at {restaurant_name}"
+        if cuisine:
+            requirements += f", {cuisine} cuisine"
+
+        dish_schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "dishes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Dish name"},
+                            "price": {"type": "string", "description": "Price with currency symbol"},
+                            "image_url": {"type": "string", "description": "Best image URL from page"},
+                            "description": {"type": "string", "description": "1-line description"}
+                        },
+                        "required": ["name", "price"]
+                    }
+                }
+            },
+            "required": ["dishes"]
+        }
+
+        payload = {
+            "ids": [restaurant_url],
+            "text": True,
+            "imageLinks": 5,
+            "summary": {
+                "query": f"Find the top 4 menu items that match: {requirements}. Extract name, price, description.",
+                "schema": dish_schema
+            }
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.post(
+                    "https://api.exa.ai/contents",
+                    json=payload,
+                    headers={"x-api-key": self.api_key},
+                )
+                response.raise_for_status()
+                data = response.json()
+        except httpx.TimeoutException as e:
+            raise TimeoutError(f"Exa get_contents timed out: {e}") from e
+        except Exception as e:
+            raise RuntimeError(f"Exa get_contents failed: {e}") from e
+
+        results = data.get("results", [])
+        if not results:
+            return []
+
+        summary = results[0].get("summary", "{}")
+        if isinstance(summary, str):
+            try:
+                dishes_data = json.loads(summary)
+            except json.JSONDecodeError:
+                return []
+        else:
+            dishes_data = summary
+
+        dishes = []
+        for dish in dishes_data.get("dishes", []):
+            dishes.append({
+                "name": dish.get("name", "Unknown Dish"),
+                "price": dish.get("price", ""),
+                "imageUrl": dish.get("image_url"),
+                "description": dish.get("description")
+            })
+
+        return dishes
+
 
 def get_exa_service() -> ExaService:
     """Factory function used as a FastAPI dependency."""
