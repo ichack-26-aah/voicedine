@@ -110,14 +110,7 @@ export default function Home() {
       )}
 
       {/* Main UI Overlay - Header */}
-      <header className="absolute top-0 left-0 w-full p-6 z-50 pointer-events-none flex justify-between items-start bg-gradient-to-b from-black/80 to-transparent">
-        <div className="pointer-events-auto">
-          <h1 className="text-3xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500">
-            ORBITAL
-          </h1>
-          <p className="text-xs text-gray-400 tracking-widest uppercase mt-1">Immersive Mapping</p>
-        </div>
-
+      <header className="absolute top-0 left-0 w-full p-6 z-50 pointer-events-none flex justify-end items-start bg-gradient-to-b from-black/80 to-transparent">
         {viewState === ViewState.STREET_VIEW && (
           <button 
             onClick={resetView}
