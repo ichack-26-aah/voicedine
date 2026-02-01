@@ -8,56 +8,27 @@ LOCATION = "Champs-Élysées, Paris, France"
 PARIS_LAT = 48.8566
 PARIS_LON = 2.3522
 GEO_TOLERANCE = 2.0  # +-2 degrees
+EXA_API_URL = "https://api.exa.ai/search"
 
-SYSTEM_PROMPT = "Search for restaurants in " + LOCATION + " based on the user specified constraints. Return the restaurant's phone number if available."
-
-# Fast search schema - only extracts name and coordinates
+# Simple flat schema for fast search - matches test_fast_search.py
 FAST_SEARCH_SCHEMA: dict[str, Any] = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-        "restaurants": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"},
-                    "address": {"type": "string"},
-                    "cuisine": {"type": "string"},
-                    "rating": {"type": "number"},
-                    "match_score": {"type": "number"},
-                    "match_criteria": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                    },
-                    "price_range": {"type": "string"},
-                    "url": {"type": "string"},
-                    "phone": {"type": "string"},
-                    "geolocation": {
-                        "type": "object",
-                        "properties": {
-                            "latitude": {"type": "number"},
-                            "longitude": {"type": "number"},
-                        },
-                        "required": ["latitude", "longitude"],
-                    },
-                },
-                "required": [
-                    "name",
-                    "address",
-                    "cuisine",
-                    "rating",
-                    "match_score",
-                    "match_criteria",
-                    "price_range",
-                    "url",
-                    "geolocation",
-                    # "phone" is optional depending on Exa's finding, so we don't strictly require it
-                ],
-            },
+        "name": {
+            "type": "string",
+            "description": "Restaurant/cafe name"
         },
+        "latitude": {
+            "type": "number",
+            "description": "Latitude coordinate"
+        },
+        "longitude": {
+            "type": "number",
+            "description": "Longitude coordinate"
+        }
     },
-    "required": ["name", "latitude", "longitude"],
+    "required": ["name", "latitude", "longitude"]
 }
 
 
@@ -83,7 +54,8 @@ class ExaService:
         num_results: int = 10,
     ) -> list[dict[str, Any]]:
         """Fast search using Exa Search API - returns results quickly with basic info."""
-        query = f"{user_prompt} near {LOCATION}"
+        query = f"restaurants cafes {user_prompt} near {LOCATION}"
+        print(f"[Exa] Searching for: {query}")
 
         payload = {
             "query": query,
@@ -107,18 +79,33 @@ class ExaService:
                 )
                 response.raise_for_status()
                 data = response.json()
+                print(f"[Exa] Raw API response: {len(data.get('results', []))} results")
+                if len(data.get('results', [])) == 0:
+                    print(f"[Exa] Full response: {data}")
         except httpx.TimeoutException as e:
             raise TimeoutError(f"Exa fast search timed out: {e}") from e
+        except httpx.HTTPStatusError as e:
+            print(f"[Exa] HTTP Error {e.response.status_code}: {e.response.text}")
+            raise RuntimeError(f"Exa fast search HTTP error: {e.response.status_code}") from e
         except Exception as e:
+            print(f"[Exa] Exception: {e}")
             raise RuntimeError(f"Exa fast search failed: {e}") from e
 
         # Transform and filter results
         restaurants: list[dict[str, Any]] = []
-        for result in data.get("results", []):
+        raw_results = data.get("results", [])
+        print(f"[Exa] Processing {len(raw_results)} raw results")
+
+        for i, result in enumerate(raw_results):
+            print(f"[Exa] Result {i}: {result.get('title', 'Unknown')}")
             transformed = self._transform_result(result)
             if transformed:
+                print(f"[Exa] ✓ Transformed result {i}: {transformed.get('name')}")
                 restaurants.append(transformed)
+            else:
+                print(f"[Exa] ✗ Filtered out result {i} (invalid geolocation)")
 
+        print(f"[Exa] Returning {len(restaurants)} valid restaurants")
         return restaurants
 
     def _transform_result(self, raw_result: dict[str, Any]) -> dict[str, Any] | None:
@@ -126,14 +113,20 @@ class ExaService:
         try:
             summary_text = raw_result.get("summary", "{}")
             summary = json.loads(summary_text)
-        except json.JSONDecodeError:
+            print(f"[Exa] Parsed summary: {summary}")
+        except json.JSONDecodeError as e:
+            print(f"[Exa] JSON decode error: {e}, raw: {raw_result.get('summary', '')[:100]}")
             return None
 
+        # Get lat/lng from flat schema (matches test_fast_search.py)
         lat = summary.get("latitude", 0.0)
         lon = summary.get("longitude", 0.0)
 
+        print(f"[Exa] Coords: lat={lat}, lon={lon}")
+
         # Filter out invalid geolocations
         if not is_valid_location(lat, lon):
+            print(f"[Exa] Invalid location: lat={lat}, lon={lon}")
             return None
 
         title = raw_result.get("title", "")
@@ -145,7 +138,7 @@ class ExaService:
             "address": "Not available",
             "cuisine": "Not specified",
             "rating": 0.0,
-            "match_score": 5.0,
+            "match_score": 10.0,
             "match_criteria": [],
             "price_range": "Unknown",
             "url": url,
@@ -164,36 +157,28 @@ class ExaService:
         """
         Fetch top menu dishes from a restaurant URL using Exa get_contents.
         """
+        print(f"[Exa] Fetching dishes for: {restaurant_name} ({restaurant_url})")
+
         requirements = f"popular dishes at {restaurant_name}"
         if cuisine:
             requirements += f", {cuisine} cuisine"
 
         dish_schema: dict[str, Any] = {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
-                "dishes": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string", "description": "Dish name"},
-                            "price": {"type": "string", "description": "Price with currency symbol"},
-                            "image_url": {"type": "string", "description": "Best image URL from page"},
-                            "description": {"type": "string", "description": "1-line description"}
-                        },
-                        "required": ["name", "price"]
-                    }
-                }
+                "dish_name": {"type": "string", "description": "Name of dish"},
+                "price": {"type": "string", "description": "Price"},
+                "description": {"type": "string", "description": "Brief description"}
             },
-            "required": ["dishes"]
+            "required": ["dish_name"]
         }
 
         payload = {
             "ids": [restaurant_url],
             "text": True,
-            "imageLinks": 5,
             "summary": {
-                "query": f"Find the top 4 menu items that match: {requirements}. Extract name, price, description.",
+                "query": f"Find menu items at {restaurant_name}. Extract dish name, price, description.",
                 "schema": dish_schema
             }
         }
@@ -205,35 +190,56 @@ class ExaService:
                     json=payload,
                     headers={"x-api-key": self.api_key},
                 )
-                response.raise_for_status()
+                print(f"[Exa] Dishes response status: {response.status_code}")
+                if response.status_code != 200:
+                    print(f"[Exa] Dishes error: {response.text}")
+                    return []
                 data = response.json()
         except httpx.TimeoutException as e:
-            raise TimeoutError(f"Exa get_contents timed out: {e}") from e
+            print(f"[Exa] Dishes timeout: {e}")
+            return []  # Return empty instead of raising
         except Exception as e:
-            raise RuntimeError(f"Exa get_contents failed: {e}") from e
+            print(f"[Exa] Dishes exception: {e}")
+            return []  # Return empty instead of raising
 
         results = data.get("results", [])
         if not results:
+            print("[Exa] No dish results")
             return []
 
         summary = results[0].get("summary", "{}")
+        print(f"[Exa] Dish summary: {summary[:200] if summary else 'empty'}...")
+
         if isinstance(summary, str):
             try:
                 dishes_data = json.loads(summary)
             except json.JSONDecodeError:
+                print("[Exa] Failed to parse dish summary JSON")
                 return []
         else:
             dishes_data = summary
 
+        # Handle both single dish and array format
         dishes = []
-        for dish in dishes_data.get("dishes", []):
+        if "dish_name" in dishes_data:
+            # Single dish response
             dishes.append({
-                "name": dish.get("name", "Unknown Dish"),
-                "price": dish.get("price", ""),
-                "imageUrl": dish.get("image_url"),
-                "description": dish.get("description")
+                "name": dishes_data.get("dish_name", "Unknown Dish"),
+                "price": dishes_data.get("price", ""),
+                "imageUrl": None,
+                "description": dishes_data.get("description")
             })
+        elif "dishes" in dishes_data:
+            # Array response
+            for dish in dishes_data.get("dishes", []):
+                dishes.append({
+                    "name": dish.get("name") or dish.get("dish_name", "Unknown Dish"),
+                    "price": dish.get("price", ""),
+                    "imageUrl": dish.get("image_url"),
+                    "description": dish.get("description")
+                })
 
+        print(f"[Exa] Returning {len(dishes)} dishes")
         return dishes
 
 

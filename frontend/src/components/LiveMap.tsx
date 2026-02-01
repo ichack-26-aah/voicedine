@@ -165,7 +165,6 @@ const LiveMap: React.FC<LiveMapProps> = ({ onBack, transcript }) => {
                 },
                 body: JSON.stringify({
                     restaurant_name: restaurant.name,
-                    restaurant_name: restaurant.name,
                     phone_number: restaurant.phone || "DEMO_MODE", // Pass placeholder if missing
                 }),
             });

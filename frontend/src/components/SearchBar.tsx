@@ -89,11 +89,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
     // Auto-start recording when component mounts (if enabled)
     useEffect(() => {
         const MAX_ATTEMPTS = 3;
-        
+
         if (autoStartRecording && !isRecording && !isConnecting && autoStartAttempts < MAX_ATTEMPTS) {
             // Progressive delay: 500ms, 1500ms, 2500ms
             const delay = 500 + (autoStartAttempts * 1000);
-            
+
             const timer = setTimeout(() => {
                 console.log(`[SearchBar] Auto-start attempt ${autoStartAttempts + 1}/${MAX_ATTEMPTS}`);
                 startRecording().catch(err => {
@@ -167,22 +167,25 @@ const SearchBar: React.FC<SearchBarProps> = ({
         Array.from(speakerTranscripts.values()).some(t => t.trim().length > 0);
 
     return (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-2xl px-4">
-            
-            {/* Results count */}
-            {resultCount !== null && !isLoading && (
-                <div className="mb-3 text-center">
-                    <span className="inline-flex items-center gap-2 bg-green-500/20 backdrop-blur-md text-green-300 text-sm font-medium px-4 py-2 rounded-full border border-green-500/30">
-                        <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                        Found {resultCount} restaurant{resultCount !== 1 ? 's' : ''}
-                    </span>
+        <>
+            {/* Transcript Bubbles - fixed left position */}
+            {hasTranscripts && (
+                <div className="fixed bottom-24 left-4 z-[1001] w-80 max-h-64 overflow-y-auto">
+                    <TranscriptBubbles speakerTranscripts={speakerTranscripts} />
                 </div>
             )}
 
-            {/* Transcript Bubbles - per speaker */}
-            {hasTranscripts && (
-                <TranscriptBubbles speakerTranscripts={speakerTranscripts} />
-            )}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-2xl px-4">
+
+                {/* Results count */}
+                {resultCount !== null && !isLoading && (
+                    <div className="mb-3 text-center">
+                        <span className="inline-flex items-center gap-2 bg-green-500/20 backdrop-blur-md text-green-300 text-sm font-medium px-4 py-2 rounded-full border border-green-500/30">
+                            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                            Found {resultCount} restaurant{resultCount !== 1 ? 's' : ''}
+                        </span>
+                    </div>
+                )}
 
             {/* Voice Loop Status - Only show when processing */}
             {/* {isLoopActive && isProcessing && (
@@ -192,7 +195,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                         Processing with Grok...
                     </span>
                 </div>
-            )} */
+            )} */}
 
             {/* Recording indicator */}
             {(isRecording || isConnecting) && !hasTranscripts && !isLoopActive && (
@@ -284,14 +287,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
             {/* Hint text */}
             <p className="mt-3 text-center text-gray-500 text-xs">
-                {isLoopActive 
+                {isLoopActive
                     ? 'Continuous voice mode active • Requirements auto-extracted every cycle'
                     : 'Type or speak your search • Voice recording auto-starts • Multiple speakers supported'
                 }
             </p>
         </div>
+        </>
     );
 };
 
 export default SearchBar;
-

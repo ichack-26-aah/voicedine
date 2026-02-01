@@ -139,7 +139,7 @@ async def websocket_transcribe(websocket: WebSocket):
     # Buffer to accumulate audio chunks for batch processing
     # 5 seconds of audio gives ElevenLabs more context for speaker diarization
     audio_buffer = bytearray()
-    CHUNK_SIZE = 16000 * 2 * 5  # 5 seconds of 16kHz 16-bit audio
+    CHUNK_SIZE = 16000 * 2 * 2  # 5 seconds of 16kHz 16-bit audio
     sample_rate = 16000
 
     try:

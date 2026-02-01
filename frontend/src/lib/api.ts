@@ -60,4 +60,17 @@ export const apiClient = {
         }),
       }
     ),
+
+  // Booking - trigger Bland AI call to restaurant
+  bookRestaurant: (restaurantName: string, phoneNumber: string) =>
+    request<{ status: string; data: unknown }>(
+      "/api/booking/book",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          restaurant_name: restaurantName,
+          phone_number: phoneNumber,
+        }),
+      }
+    ),
 };

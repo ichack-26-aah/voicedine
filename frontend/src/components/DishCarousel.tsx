@@ -14,7 +14,7 @@ const DishCarousel: React.FC<DishCarouselProps> = ({ dishes, loading, restaurant
 
   if (loading) {
     return (
-      <div className="absolute bottom-28 right-4 z-[1000] w-96 h-56 bg-gray-900/90 backdrop-blur-sm p-3 rounded-lg border border-gray-700">
+      <div className="absolute top-4 right-4 z-[1000] w-96 h-56 bg-gray-900/90 backdrop-blur-sm p-3 rounded-lg border border-gray-700">
         <p className="text-xs text-gray-400 mb-2">Loading menu...</p>
         <div className="flex gap-3 h-48">
           <div className="w-40 h-48 bg-gray-800 rounded-lg animate-pulse" />
@@ -31,7 +31,7 @@ const DishCarousel: React.FC<DishCarouselProps> = ({ dishes, loading, restaurant
   const selectedDish = dishes[selectedDishIndex];
 
   return (
-    <div className="absolute bottom-28 right-4 z-[1000] w-96 h-56 bg-gray-900/90 backdrop-blur-sm p-3 rounded-lg border border-gray-700 shadow-xl flex flex-col">
+    <div className="absolute top-4 right-4 z-[1000] w-96 h-56 bg-gray-900/90 backdrop-blur-sm p-3 rounded-lg border border-gray-700 shadow-xl flex flex-col">
       {restaurantName && (
         <p className="text-xs text-indigo-400 font-semibold mb-2 truncate">
           {restaurantName}

@@ -128,24 +128,36 @@ export function useVoiceLoop(options: UseVoiceLoopOptions = {}): UseVoiceLoopRet
         if (reqs.length === 0) return;
 
         try {
+            console.log('[VoiceLoop] triggerExaSearch called with', reqs.length, 'requirements');
             // We're already in a processing state from runCycle, but ensure it's set
             setProcessingState(true);
             const searchQuery = reqs
                 .map(r => r.requirement)
                 .join(', ');
 
-            if (!searchQuery.trim()) return;
+            console.log('[VoiceLoop] Search query:', searchQuery);
+            if (!searchQuery.trim()) {
+                console.log('[VoiceLoop] Empty search query after trim, aborting');
+                return;
+            }
 
+            console.log('[VoiceLoop] Calling Exa API with prompt:', searchQuery);
             const results = await apiClient.post<RestaurantResult[]>(
                 '/api/exa/research/sync',
                 { prompt: searchQuery }
             );
 
+            console.log('[VoiceLoop] Exa results received:', results);
+            console.log('[VoiceLoop] Number of results:', results?.length || 0);
             if (results && results.length > 0) {
+                console.log('[VoiceLoop] First result sample:', results[0]);
                 onExaResults?.(results);
+            } else {
+                console.log('[VoiceLoop] No results returned from Exa API');
             }
         } catch (err) {
             const errorMsg = err instanceof Error ? err.message : 'Exa search failed';
+            console.error('[VoiceLoop] Exa search error:', errorMsg);
             setLastError(errorMsg);
             onError?.(errorMsg);
         } finally {
@@ -177,10 +189,10 @@ export function useVoiceLoop(options: UseVoiceLoopOptions = {}): UseVoiceLoopRet
                     // Append to master list
                     setRequirements(prev => {
                         const updated = [
-                            ...prev, 
+                            ...prev,
                             ...newRequirements
                         ];
-                        
+
                         // Notify about new requirements
                         onRequirementsExtracted?.(updated);
 
@@ -188,14 +200,16 @@ export function useVoiceLoop(options: UseVoiceLoopOptions = {}): UseVoiceLoopRet
                         // We do this inside the setState callback to ensure we use the updated list
                         // However, setState is not async in that way. We can use 'updated' directly here.
                         // But wait, triggerExaSearch is async. It's safer to call it with the 'updated' list we just computed.
-                        
+
                         // Important: logic modification requested by user:
                         // "if nothing was added to the list i.e list size didn't increase then DONT call exa ai"
                         // Since newRequirements.length > 0 check is already here, we are good.
                         // We are actively inside the block that runs ONLY if new requirements exist.
-                        
-                        triggerExaSearch(updated);
-                        
+
+                        // Call Exa search without awaiting - fire and forget
+                        // (it will handle callbacks when results arrive)
+                        void triggerExaSearch(updated);
+
                         return updated;
                     });
                 } else {

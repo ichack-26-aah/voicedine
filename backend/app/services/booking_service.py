@@ -6,7 +6,6 @@ load_dotenv()
 
 # Fetch keys from environment variables
 BLAND_API_KEY = os.getenv("BLAND_API_KEY")
-BLAND_VOICE_ID = os.getenv("BLAND_VOICE_ID") 
 MY_NUMBER = os.getenv("MY_NUMBER")
 
 def trigger_call(to_number: str, restaurant_name: str) -> dict:
@@ -15,56 +14,50 @@ def trigger_call(to_number: str, restaurant_name: str) -> dict:
 
     # Bland AI API Endpoint
     url = "https://api.bland.ai/v1/calls"
-    
+
     headers = {
         "authorization": BLAND_API_KEY,
         "Content-Type": "application/json"
     }
-    
-    # This prompt is engineered to stop him breaking character
-    strict_prompt = (
-        "You are James, a confident, charming, and slightly flirtatious personal assistant. "
-        "Your SOLE GOAL is to book a table at Nando's for 2 guys at 8pm tonight. "
-        "Do NOT act like a generic AI. Do NOT ask 'How can I help you?'. "
-        "You are speaking to the restaurant staff right now. "
-        "1. Ask for the table politely but firmly. "
-        "2. If they ask for a name, say 'Tyrone'. "
-        "3. If they confirm, say 'Beautiful, see you then' and END THE CALL. "
-        "4. If they say no, ask for 9pm. "
-        "Keep your responses short (under 20 words). Speak like a real Londoner."
+
+    # French prompt - James speaks French
+    task_prompt = (
+        f"Tu es James, un assistant personnel charmant et confiant. "
+        f"Tu appelles le restaurant {restaurant_name} pour réserver une table pour 2 personnes à 20h ce soir. "
+        f"Tu es poli, professionnel et un peu dragueur. "
+        f"1. Commence par demander la réservation poliment mais fermement. "
+        f"2. Si on te demande un nom, dis que c'est pour 'Tyrone'. "
+        f"3. Si l'heure est confirmée, dis 'Fantastique, à tout à l'heure' et raccroche. "
+        f"4. S'ils disent non pour 20h, demande 'Et vers 21h ?'. "
+        f"Garde tes réponses courtes (moins de 20 mots). Ne propose pas d'autre aide. Réserve juste la table."
     )
 
-    # Payload for Bland AI
     payload = {
-        "phone_number": MY_NUMBER, # Override destination for demo
-        "task": strict_prompt,
-        
-        "first_sentence": f"Hello? Is this {restaurant_name}? I need to book a table.",
-        
-        "max_duration": 4, # minutes
+        "phone_number": MY_NUMBER,  # Override destination for demo
+        "task": task_prompt,
+        "language": "fr",  # French language
+        "reduce_latency": True,
+        "max_duration": 5,  # minutes
         "record": True,
-        
-        "language": "en-US", 
-        "wait_for_greeting": False 
+        "first_sentence": f"Bonjour? Est-ce que c'est le {restaurant_name}? J'aimerais réserver une table.",
+        "wait_for_greeting": False
     }
-    
-    # Add voice ID if provided (Make sure this ID supports French for best results!)
-    if BLAND_VOICE_ID:
-        payload["voice"] = BLAND_VOICE_ID
 
-    print(f">> Triggering French Bland AI call to {MY_NUMBER} (Demo override for {restaurant_name})...")
-    
+    print(f">> James (French Mode) is dialling {MY_NUMBER} for {restaurant_name}...")
+
     try:
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
-        return response.json()
+        resp_data = response.json()
+        print(f">> SUCCESS: Call ID {resp_data.get('call_id')}")
+        return resp_data
     except requests.exceptions.RequestException as e:
-        print(f"Error triggering call: {e}")
+        print(f">> Error triggering call: {e}")
         if 'response' in locals() and response is not None:
-             print(f"Response content: {response.content}")
+            print(f">> Response content: {response.content}")
         raise RuntimeError(f"Failed to trigger call: {e}")
+
 
 # --- EXECUTION ---
 if __name__ == "__main__":
-    # You can change "Nando's" to something French like "Le Bistro" if you want
     trigger_call(MY_NUMBER, "Nando's")

@@ -26,6 +26,8 @@ app.add_middleware(
 # Register routers
 app.include_router(transcription.router)
 app.include_router(exa_router)
+app.include_router(grok_router)
+app.include_router(booking_router)
 
 
 @app.get("/health")

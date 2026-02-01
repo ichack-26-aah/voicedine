@@ -313,6 +313,10 @@ const StreetView: React.FC = () => {
   const [dishes, setDishes] = useState<DishItem[]>([]);
   const [dishesLoading, setDishesLoading] = useState(false);
 
+  // Booking state
+  const [bookingInProgress, setBookingInProgress] = useState<string | null>(null); // restaurant name being booked
+  const [bookingStatus, setBookingStatus] = useState<{ name: string; status: 'success' | 'error'; message: string } | null>(null);
+
   // Background Exa call to fetch dishes when a restaurant is selected
   useEffect(() => {
     if (!selectedRestaurant) {
@@ -442,6 +446,38 @@ const StreetView: React.FC = () => {
     setError(null);
   }, []);
 
+  // Handle booking - trigger Bland AI call
+  const handleBooking = useCallback(async (restaurantName: string, phoneNumber: string) => {
+    // Prevent double-booking
+    if (bookingInProgress) return;
+
+    setBookingInProgress(restaurantName);
+    setBookingStatus(null);
+
+    try {
+      console.log(`[Booking] Initiating call for ${restaurantName}...`);
+      await apiClient.bookRestaurant(restaurantName, phoneNumber || '');
+
+      console.log(`[Booking] Call initiated successfully for ${restaurantName}`);
+      setBookingStatus({
+        name: restaurantName,
+        status: 'success',
+        message: 'Call initiated! James is booking your table...'
+      });
+    } catch (err) {
+      console.error('[Booking] Failed to initiate call:', err);
+      setBookingStatus({
+        name: restaurantName,
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Failed to initiate call'
+      });
+    } finally {
+      setBookingInProgress(null);
+      // Clear status after 5 seconds
+      setTimeout(() => setBookingStatus(null), 5000);
+    }
+  }, [bookingInProgress]);
+
   return (
     <div className="relative w-full h-full opacity-0 animate-fadeIn">
       <MapContainer
@@ -564,12 +600,44 @@ const StreetView: React.FC = () => {
                       </div>
                     )}
 
+                    {/* Make Booking Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleBooking(restaurant.name, restaurant.phone || '');
+                      }}
+                      disabled={bookingInProgress === restaurant.name}
+                      className={`
+                        w-full text-center text-xs py-2 rounded-md mt-2 transition-all duration-200 font-medium
+                        ${bookingInProgress === restaurant.name
+                          ? 'bg-yellow-600 text-white cursor-wait'
+                          : bookingStatus?.name === restaurant.name && bookingStatus.status === 'success'
+                            ? 'bg-green-600 text-white'
+                            : bookingStatus?.name === restaurant.name && bookingStatus.status === 'error'
+                              ? 'bg-red-600 text-white'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        }
+                      `}
+                    >
+                      {bookingInProgress === restaurant.name ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Calling...
+                        </span>
+                      ) : bookingStatus?.name === restaurant.name ? (
+                        <span>{bookingStatus.status === 'success' ? '✓ Call Initiated!' : '✗ Failed'}</span>
+                      ) : (
+                        <span>📞 Make Booking</span>
+                      )}
+                    </button>
+
+                    {/* View Details link - secondary */}
                     {restaurant.url && (
                       <a
                         href={restaurant.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block text-center text-xs bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-md mt-2 transition-colors"
+                        className="block text-center text-xs text-gray-400 hover:text-gray-200 py-1 mt-1 transition-colors"
                       >
                         View Details →
                       </a>
@@ -610,20 +678,16 @@ const StreetView: React.FC = () => {
           <MapPin className="text-indigo-400" />
           <h2 className="text-xl font-bold text-white">Avenue des Champs-Élysées</h2>
         </div>
-        <div className="text-gray-400 text-sm mb-4">
+        <div className="text-gray-400 text-sm mb-4 max-h-40 overflow-y-auto">
           {activeRequirements.length > 0 ? (
             <div className="space-y-1">
-              <p className="font-semibold text-indigo-300 mb-1">Latest Filter:</p>
-              {/* Show only the most recent requirement */}
-              <p className="flex items-start gap-2">
-                <span className="text-indigo-500 mt-1">•</span>
-                <span>{activeRequirements[activeRequirements.length - 1]}</span>
-              </p>
-              {activeRequirements.length > 1 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  ({activeRequirements.length} total criteria active)
+              <p className="font-semibold text-indigo-300 mb-1">Active Filters ({activeRequirements.length}):</p>
+              {activeRequirements.map((req, index) => (
+                <p key={index} className="flex items-start gap-2">
+                  <span className="text-indigo-500 mt-1">•</span>
+                  <span>{req}</span>
                 </p>
-              )}
+              ))}
             </div>
           ) : (
              <p>Explore the world&apos;s most beautiful avenue in Paris. Start speaking to filter restaurants.</p>
