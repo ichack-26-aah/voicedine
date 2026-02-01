@@ -1,5 +1,4 @@
 import os
-import time
 from typing import Any
 
 from exa_py import Exa
@@ -25,6 +24,13 @@ RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
                     },
                     "price_range": {"type": "string"},
                     "url": {"type": "string"},
+                    "geolocation": {
+                        "type": "object",
+                        "properties": {
+                            "latitude": {"type": "number"},
+                            "longitude": {"type": "number"},
+                        },
+                        "required": ["latitude", "longitude"],
                 },
                 "required": [
                     "name",
@@ -35,7 +41,9 @@ RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
                     "match_criteria",
                     "price_range",
                     "url",
+                    "geolocation",
                 ],
+                }
             },
         },
     },
@@ -53,50 +61,36 @@ class ExaService:
     def create_research(
         self,
         user_prompt: str,
-        model: str = "exa-research-fast",
+        model: str = "exa-research",
     ) -> dict[str, Any]:
         """Start an Exa research task and return its ID."""
         instructions = f"{SYSTEM_PROMPT}\n\n{user_prompt}"
 
         try:
-            task = self.client.research.create(
+            task = self.client.research.create_task(
                 instructions=instructions,
                 model=model,
                 output_schema=RESTAURANT_OUTPUT_SCHEMA,
             )
-            return {
-                "research_id": task.research_id,
-                "created_at": getattr(task, "created_at", None),
-            }
+            return {"research_id": task.id}
         except Exception as e:
             raise RuntimeError(f"Exa research creation failed: {e}") from e
 
     def get_research(
         self,
         research_id: str,
-        events: bool = False,
     ) -> dict[str, Any]:
-        """Poll an Exa research task by ID and return its current state."""
+        """Fetch an Exa research task by ID and return its current state."""
         try:
-            task = self.client.research.get(
-                research_id,
-                events=events,
-            )
+            task = self.client.research.get_task(research_id)
 
             result: dict[str, Any] = {
-                "research_id": research_id,
+                "research_id": task.id,
                 "status": task.status,
             }
 
-            if task.status == "completed" and task.output is not None:
-                result["output"] = {
-                    "content": task.output.content,
-                    "parsed": task.output.parsed,
-                }
-                result["cost_dollars"] = getattr(task, "cost_dollars", None)
-
-            if events:
-                result["events"] = getattr(task, "events", None)
+            if task.data is not None:
+                result["data"] = task.data
 
             return result
         except Exception as e:
@@ -105,26 +99,21 @@ class ExaService:
     def research_sync(
         self,
         user_prompt: str,
-        model: str = "exa-research-fast",
-        poll_interval: float = 2.0,
-        timeout: float = 120.0,
+        model: str = "exa-research",
     ) -> list[dict[str, Any]]:
         """Create a research task, poll until done, and return restaurants list."""
-        task_data = self.create_research(user_prompt, model=model)
-        research_id: str = task_data["research_id"]
+        task_info = self.create_research(user_prompt, model=model)
+        research_id: str = task_info["research_id"]
 
-        elapsed = 0.0
-        while elapsed < timeout:
-            result = self.get_research(research_id)
-            if result["status"] == "completed":
-                parsed = (result.get("output") or {}).get("parsed") or {}
-                return parsed.get("restaurants", [])
-            time.sleep(poll_interval)
-            elapsed += poll_interval
+        try:
+            task = self.client.research.poll_task(research_id)
+        except TimeoutError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Exa research polling failed: {e}") from e
 
-        raise TimeoutError(
-            f"Research {research_id} did not complete within {timeout}s"
-        )
+        data = task.data or {}
+        return data.get("restaurants", [])
 
 
 def get_exa_service() -> ExaService:

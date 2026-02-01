@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.models.exa_models import (
     ResearchCreateRequest,
@@ -55,13 +55,11 @@ async def research_sync(
 @router.get("/research/{research_id}", response_model=ResearchGetResponse)
 async def get_research(
     research_id: str,
-    events: bool = Query(False, description="Include event log in response"),
     exa: ExaService = Depends(get_exa_service),
 ) -> ResearchGetResponse:
     try:
         data = exa.get_research(
             research_id=research_id,
-            events=events,
         )
         return ResearchGetResponse(**data)
     except ValueError as e:
