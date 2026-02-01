@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import transcription
+from app.routers.exa_router import router as exa_router
 
 load_dotenv()
 
@@ -22,6 +23,9 @@ app.add_middleware(
 
 # Register routers
 app.include_router(transcription.router)
+
+
+app.include_router(exa_router)
 
 
 @app.get("/health")
