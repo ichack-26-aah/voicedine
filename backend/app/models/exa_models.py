@@ -1,27 +1,46 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
-class ExaSearchRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, description="Search query")
-    num_results: int = Field(10, ge=1, le=50, description="Number of results")
-    search_type: str = Field("auto", description="Search type: auto, keyword, or neural")
-    use_autoprompt: bool = Field(True, description="Let Exa optimise the query")
-    include_text: bool = Field(True, description="Include page text in results")
-    include_domains: list[str] | None = Field(None, description="Restrict to these domains")
-    exclude_domains: list[str] | None = Field(None, description="Exclude these domains")
-    start_published_date: str | None = Field(None, description="Filter: start date (YYYY-MM-DD)")
-    end_published_date: str | None = Field(None, description="Filter: end date (YYYY-MM-DD)")
+# --- Request models ---
+
+class ResearchCreateRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, description="User search query / constraints")
+    model: str = Field(
+        "exa-research-fast",
+        description="Research model: exa-research-fast, exa-research, or exa-research-pro",
+    )
 
 
-class ExaSearchResult(BaseModel):
-    title: str | None = None
-    url: str | None = None
-    text: str | None = None
-    published_date: str | None = None
-    author: str | None = None
-    score: float | None = None
+# --- Restaurant schema (mirrors the output_schema sent to Exa) ---
+
+class RestaurantResult(BaseModel):
+    name: str
+    address: str
+    cuisine: str
+    rating: float = Field(..., ge=0.0, le=5.0)
+    match_score: float = Field(..., ge=0.0, le=10.0)
+    match_criteria: list[str]
+    price_range: str
+    url: str
 
 
-class ExaSearchResponse(BaseModel):
-    results: list[ExaSearchResult]
-    autoprompt_string: str | None = None
+# --- Response models ---
+
+class ResearchCreateResponse(BaseModel):
+    research_id: str
+    created_at: str | None = None
+
+
+class ResearchOutput(BaseModel):
+    content: str | None = None
+    parsed: dict[str, Any] | None = None
+
+
+class ResearchGetResponse(BaseModel):
+    research_id: str
+    status: str
+    output: ResearchOutput | None = None
+    cost_dollars: Any | None = None
+    events: list[Any] | None = None

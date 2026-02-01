@@ -1,29 +1,46 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.models.exa_models import ExaSearchRequest, ExaSearchResponse
+from app.models.exa_models import (
+    ResearchCreateRequest,
+    ResearchCreateResponse,
+    ResearchGetResponse,
+)
 from app.services.exa_service import ExaService, get_exa_service
 
 router = APIRouter(prefix="/api/exa", tags=["exa"])
 
 
-@router.post("/search", response_model=ExaSearchResponse)
-async def search(
-    request: ExaSearchRequest,
+@router.post("/research", response_model=ResearchCreateResponse)
+async def create_research(
+    request: ResearchCreateRequest,
     exa: ExaService = Depends(get_exa_service),
-) -> ExaSearchResponse:
+) -> ResearchCreateResponse:
     try:
-        data = exa.search_content(
-            prompt=request.prompt,
-            num_results=request.num_results,
-            search_type=request.search_type,
-            use_autoprompt=request.use_autoprompt,
-            include_text=request.include_text,
-            include_domains=request.include_domains,
-            exclude_domains=request.exclude_domains,
-            start_published_date=request.start_published_date,
-            end_published_date=request.end_published_date,
+        data = exa.create_research(
+            user_prompt=request.prompt,
+            model=request.model,
         )
-        return ExaSearchResponse(**data)
+        return ResearchCreateResponse(**data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {e}") from e
+
+
+@router.get("/research/{research_id}", response_model=ResearchGetResponse)
+async def get_research(
+    research_id: str,
+    events: bool = Query(False, description="Include event log in response"),
+    exa: ExaService = Depends(get_exa_service),
+) -> ResearchGetResponse:
+    try:
+        data = exa.get_research(
+            research_id=research_id,
+            events=events,
+        )
+        return ResearchGetResponse(**data)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except RuntimeError as e:

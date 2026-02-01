@@ -3,6 +3,47 @@ from typing import Any
 
 from exa_py import Exa
 
+SYSTEM_PROMPT = (
+    "Search for restaurants in the specified location based on the user"
+    " specified constraints."
+)
+
+RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "restaurants": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "address": {"type": "string"},
+                    "cuisine": {"type": "string"},
+                    "rating": {"type": "number"},
+                    "match_score": {"type": "number"},
+                    "match_criteria": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "price_range": {"type": "string"},
+                    "url": {"type": "string"},
+                },
+                "required": [
+                    "name",
+                    "address",
+                    "cuisine",
+                    "rating",
+                    "match_score",
+                    "match_criteria",
+                    "price_range",
+                    "url",
+                ],
+            },
+        },
+    },
+    "required": ["restaurants"],
+}
+
 
 class ExaService:
     def __init__(self) -> None:
@@ -11,53 +52,57 @@ class ExaService:
             raise ValueError("EXA_API_KEY environment variable is not set")
         self.client = Exa(api_key=api_key)
 
-    def search_content(
+    def create_research(
         self,
-        prompt: str,
-        *,
-        num_results: int = 10,
-        search_type: str = "auto",
-        use_autoprompt: bool = True,
-        include_text: bool = True,
-        include_domains: list[str] | None = None,
-        exclude_domains: list[str] | None = None,
-        start_published_date: str | None = None,
-        end_published_date: str | None = None,
+        user_prompt: str,
+        model: str = "exa-research-fast",
     ) -> dict[str, Any]:
-        """Search for content using Exa and return formatted results."""
+        """Start an Exa research task and return its ID."""
+        instructions = f"{SYSTEM_PROMPT}\n\n{user_prompt}"
+
         try:
-            response = self.client.search_and_contents(
-                prompt,
-                num_results=num_results,
-                type=search_type,
-                use_autoprompt=use_autoprompt,
-                text=include_text,
-                include_domains=include_domains,
-                exclude_domains=exclude_domains,
-                start_published_date=start_published_date,
-                end_published_date=end_published_date,
+            task = self.client.research.create(
+                instructions=instructions,
+                model=model,
+                output_schema=RESTAURANT_OUTPUT_SCHEMA,
+            )
+            return {
+                "research_id": task.research_id,
+                "created_at": getattr(task, "created_at", None),
+            }
+        except Exception as e:
+            raise RuntimeError(f"Exa research creation failed: {e}") from e
+
+    def get_research(
+        self,
+        research_id: str,
+        events: bool = False,
+    ) -> dict[str, Any]:
+        """Poll an Exa research task by ID and return its current state."""
+        try:
+            task = self.client.research.get(
+                research_id,
+                events=events,
             )
 
-            results = []
-            for result in response.results:
-                results.append({
-                    "title": result.title,
-                    "url": result.url,
-                    "text": getattr(result, "text", None),
-                    "published_date": getattr(result, "published_date", None),
-                    "author": getattr(result, "author", None),
-                    "score": getattr(result, "score", None),
-                })
-
-            return {
-                "results": results,
-                "autoprompt_string": getattr(
-                    response, "autoprompt_string", None
-                ),
+            result: dict[str, Any] = {
+                "research_id": research_id,
+                "status": task.status,
             }
 
+            if task.status == "completed" and task.output is not None:
+                result["output"] = {
+                    "content": task.output.content,
+                    "parsed": task.output.parsed,
+                }
+                result["cost_dollars"] = getattr(task, "cost_dollars", None)
+
+            if events:
+                result["events"] = getattr(task, "events", None)
+
+            return result
         except Exception as e:
-            raise RuntimeError(f"Exa search failed: {e}") from e
+            raise RuntimeError(f"Exa research retrieval failed: {e}") from e
 
 
 def get_exa_service() -> ExaService:
