@@ -5,21 +5,29 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
 const SAMPLE_RATE = 16000;
 
+export interface SpeakerTranscript {
+    speakerId: number;
+    text: string;
+}
+
 interface UseVoiceRecorderReturn {
     isRecording: boolean;
     isConnecting: boolean;
-    transcript: string;
+    speakerTranscripts: Map<number, string>;
     error: string | null;
     startRecording: () => Promise<void>;
     stopRecording: () => void;
-    clearTranscript: () => void;
+    clearTranscripts: () => void;
+    getMergedTranscript: () => string;
     clearError: () => void;
 }
 
-export function useVoiceRecorder(onTranscript?: (text: string) => void): UseVoiceRecorderReturn {
+export function useVoiceRecorder(
+    onTranscriptUpdate?: (transcripts: Map<number, string>) => void
+): UseVoiceRecorderReturn {
     const [isRecording, setIsRecording] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
-    const [transcript, setTranscript] = useState('');
+    const [speakerTranscripts, setSpeakerTranscripts] = useState<Map<number, string>>(new Map());
     const [error, setError] = useState<string | null>(null);
 
     const wsRef = useRef<WebSocket | null>(null);
@@ -121,11 +129,16 @@ export function useVoiceRecorder(onTranscript?: (text: string) => void): UseVoic
                     const data = JSON.parse(event.data);
                     if (data.type === 'transcript' && data.text) {
                         const newText = data.text.trim();
+                        const speakerId = data.speaker_id ?? 0;
+
                         if (newText) {
-                            setTranscript(prev => {
-                                const updated = prev ? `${prev} ${newText}` : newText;
-                                if (onTranscript) {
-                                    onTranscript(updated);
+                            setSpeakerTranscripts(prev => {
+                                const updated = new Map(prev);
+                                const existing = updated.get(speakerId) || '';
+                                updated.set(speakerId, existing ? `${existing} ${newText}` : newText);
+
+                                if (onTranscriptUpdate) {
+                                    onTranscriptUpdate(updated);
                                 }
                                 return updated;
                             });
@@ -166,15 +179,26 @@ export function useVoiceRecorder(onTranscript?: (text: string) => void): UseVoic
             setIsConnecting(false);
             cleanup();
         }
-    }, [cleanup, onTranscript]);
+    }, [cleanup, onTranscriptUpdate]);
 
     const stopRecording = useCallback(() => {
         cleanup();
     }, [cleanup]);
 
-    const clearTranscript = useCallback(() => {
-        setTranscript('');
+    const clearTranscripts = useCallback(() => {
+        setSpeakerTranscripts(new Map());
     }, []);
+
+    const getMergedTranscript = useCallback(() => {
+        // Merge all speaker transcripts into one string
+        const allTexts: string[] = [];
+        speakerTranscripts.forEach((text) => {
+            if (text.trim()) {
+                allTexts.push(text.trim());
+            }
+        });
+        return allTexts.join(' ');
+    }, [speakerTranscripts]);
 
     const clearError = useCallback(() => {
         setError(null);
@@ -183,11 +207,12 @@ export function useVoiceRecorder(onTranscript?: (text: string) => void): UseVoic
     return {
         isRecording,
         isConnecting,
-        transcript,
+        speakerTranscripts,
         error,
         startRecording,
         stopRecording,
-        clearTranscript,
+        clearTranscripts,
+        getMergedTranscript,
         clearError,
     };
 }

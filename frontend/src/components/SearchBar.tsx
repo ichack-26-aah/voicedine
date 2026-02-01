@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Search, Loader2, AlertCircle, X, Mic, MicOff } from 'lucide-react';
 import { useVoiceRecorder } from '@/lib/useVoiceRecorder';
+import TranscriptBubbles from './TranscriptBubbles';
 
 interface SearchBarProps {
     onSearch: (query: string) => Promise<void>;
@@ -21,24 +22,20 @@ const SearchBar: React.FC<SearchBarProps> = ({
     onClearError,
     autoStartRecording = false,
 }) => {
-    const [query, setQuery] = useState('');
     const [validationError, setValidationError] = useState<string | null>(null);
     const hasAutoStarted = useRef(false);
-
-    // Voice recording hook
-    const handleTranscript = useCallback((text: string) => {
-        setQuery(text);
-    }, []);
 
     const {
         isRecording,
         isConnecting,
+        speakerTranscripts,
         error: voiceError,
         startRecording,
         stopRecording,
-        clearTranscript,
+        clearTranscripts,
+        getMergedTranscript,
         clearError: clearVoiceError,
-    } = useVoiceRecorder(handleTranscript);
+    } = useVoiceRecorder();
 
     // Auto-start recording when component mounts (if enabled)
     useEffect(() => {
@@ -52,44 +49,26 @@ const SearchBar: React.FC<SearchBarProps> = ({
         }
     }, [autoStartRecording, isRecording, isConnecting, startRecording]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        // Clear previous errors
-        setValidationError(null);
-        onClearError();
-
-        // Validate input
-        const trimmedQuery = query.trim();
-        if (!trimmedQuery) {
-            setValidationError('Please enter a search query');
-            return;
-        }
-
-        await onSearch(trimmedQuery);
-    };
-
-    // New mic click behavior: stop → submit → clear → restart
+    // New mic click behavior: stop → submit merged transcript → clear → restart
     const handleMicClick = useCallback(async () => {
         if (isRecording) {
             // Stop recording first
             stopRecording();
 
-            // Get current query before clearing
-            const currentQuery = query.trim();
+            // Get merged transcript from all speakers
+            const mergedQuery = getMergedTranscript().trim();
 
             // If there's a query, submit it
-            if (currentQuery) {
+            if (mergedQuery) {
                 setValidationError(null);
                 onClearError();
 
                 // Submit the search
-                await onSearch(currentQuery);
-
-                // Clear the text box for next query
-                setQuery('');
-                clearTranscript();
+                await onSearch(mergedQuery);
             }
+
+            // Clear the transcript bubbles
+            clearTranscripts();
 
             // Restart recording after a brief delay
             setTimeout(async () => {
@@ -97,10 +76,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
             }, 300);
         } else {
             // If not recording (edge case), just start
-            clearTranscript();
+            clearTranscripts();
             await startRecording();
         }
-    }, [isRecording, stopRecording, query, onSearch, onClearError, startRecording, clearTranscript]);
+    }, [isRecording, stopRecording, getMergedTranscript, onSearch, onClearError, startRecording, clearTranscripts]);
 
     const displayError = validationError || error || voiceError;
 
@@ -109,6 +88,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
         onClearError();
         clearVoiceError();
     };
+
+    // Check if there are any transcripts to display
+    const hasTranscripts = speakerTranscripts.size > 0 &&
+        Array.from(speakerTranscripts.values()).some(t => t.trim().length > 0);
 
     return (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-2xl px-4">
@@ -122,12 +105,17 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 </div>
             )}
 
+            {/* Transcript Bubbles - per speaker */}
+            {hasTranscripts && (
+                <TranscriptBubbles speakerTranscripts={speakerTranscripts} />
+            )}
+
             {/* Recording indicator */}
-            {(isRecording || isConnecting) && (
+            {(isRecording || isConnecting) && !hasTranscripts && (
                 <div className="mb-3 text-center">
                     <span className="inline-flex items-center gap-2 bg-red-500/20 backdrop-blur-md text-red-300 text-sm font-medium px-4 py-2 rounded-full border border-red-500/30 animate-pulse">
                         <span className="w-2 h-2 bg-red-500 rounded-full" />
-                        {isConnecting ? 'Connecting...' : 'Listening... Click mic to search'}
+                        {isConnecting ? 'Connecting...' : 'Listening... Speak now'}
                     </span>
                 </div>
             )}
@@ -148,20 +136,16 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 </div>
             )}
 
-            {/* Search bar */}
-            <form onSubmit={handleSubmit} className="relative">
+            {/* Search bar - minimal when recording */}
+            <div className="relative">
                 <div className="flex items-center gap-2 bg-gray-900/90 backdrop-blur-xl rounded-full shadow-2xl border border-gray-700/50 p-2 transition-all duration-300 focus-within:border-indigo-500/50 focus-within:shadow-indigo-500/10">
                     <div className="flex-1 flex items-center gap-3 pl-4">
                         <Search className="text-gray-400 flex-shrink-0" size={20} />
-                        <input
-                            type="text"
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            placeholder={isRecording ? "Speak your search..." : "e.g., Italian restaurants with gluten-free options"}
-                            className="w-full bg-transparent text-white placeholder-gray-500 text-base outline-none"
-                            disabled={isLoading}
-                            readOnly={isRecording}
-                        />
+                        <div className="w-full text-gray-500 text-base">
+                            {isRecording
+                                ? (hasTranscripts ? 'Click mic to search...' : 'Speak your search...')
+                                : 'Voice search enabled'}
+                        </div>
                     </div>
 
                     {/* Microphone button - main action button */}
@@ -170,15 +154,15 @@ const SearchBar: React.FC<SearchBarProps> = ({
                         onClick={handleMicClick}
                         disabled={isLoading || isConnecting}
                         className={`
-              flex items-center justify-center p-3 rounded-full transition-all duration-200
-              ${isRecording
+                            flex items-center justify-center p-3 rounded-full transition-all duration-200
+                            ${isRecording
                                 ? 'bg-red-600 hover:bg-red-500 shadow-lg shadow-red-500/30 animate-pulse'
                                 : isConnecting
                                     ? 'bg-gray-600 cursor-wait'
                                     : 'bg-gray-700 hover:bg-gray-600'
                             }
-              disabled:opacity-50 disabled:cursor-not-allowed
-            `}
+                            disabled:opacity-50 disabled:cursor-not-allowed
+                        `}
                         title={isRecording ? 'Stop & Search' : 'Start voice input'}
                     >
                         {isConnecting ? (
@@ -190,31 +174,20 @@ const SearchBar: React.FC<SearchBarProps> = ({
                         )}
                     </button>
 
-                    {/* Search button - for manual text search */}
-                    <button
-                        type="submit"
-                        disabled={isLoading || isRecording}
-                        className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 disabled:cursor-not-allowed text-white font-medium px-6 py-3 rounded-full transition-all duration-200 shadow-lg hover:shadow-indigo-500/25"
-                    >
-                        {isLoading ? (
-                            <>
-                                <Loader2 size={18} className="animate-spin" />
-                                <span>Searching...</span>
-                            </>
-                        ) : (
-                            <>
-                                <Search size={18} />
-                                <span>Search</span>
-                            </>
-                        )}
-                    </button>
+                    {/* Search button - shows loading state */}
+                    {isLoading && (
+                        <div className="flex items-center justify-center gap-2 bg-indigo-600/50 text-white font-medium px-6 py-3 rounded-full">
+                            <Loader2 size={18} className="animate-spin" />
+                            <span>Searching...</span>
+                        </div>
+                    )}
                 </div>
-            </form>
+            </div>
 
             {/* Hint text */}
             <p className="mt-3 text-center text-gray-500 text-xs">
                 {isRecording
-                    ? 'Speak your search query, then click the mic button to search'
+                    ? 'Speak your search • Click mic to search • Multiple speakers supported'
                     : 'Voice recording will auto-start • Click mic to search'}
             </p>
         </div>
