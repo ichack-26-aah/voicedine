@@ -39,27 +39,53 @@ def extract_speaker_segments(result: Any) -> List[Dict]:
     """Extract speaker segments from ElevenLabs transcription result."""
     segments = []
     
+    # Debug: Print the result structure
+    print(f"DEBUG: Result type: {type(result)}")
+    if hasattr(result, '__dict__'):
+        print(f"DEBUG: Result dict keys: {result.__dict__.keys() if hasattr(result, '__dict__') else 'N/A'}")
+    
     # Try to access words with speaker info
     if hasattr(result, 'words') and result.words:
+        print(f"DEBUG: Found {len(result.words)} words")
+        
+        # Debug first word structure
+        if result.words:
+            first_word = result.words[0]
+            print(f"DEBUG: First word: {first_word}")
+            if hasattr(first_word, '__dict__'):
+                print(f"DEBUG: First word dict: {first_word.__dict__}")
+        
         current_speaker = None
         current_text = []
         
         for word in result.words:
-            word_text = getattr(word, 'text', '') or getattr(word, 'word', '') or str(word)
-            speaker_id = getattr(word, 'speaker_id', None) or getattr(word, 'speaker', 0)
+            # Get word text
+            word_text = getattr(word, 'text', '') or ''
+            if not word_text:
+                continue
             
-            # Convert speaker_id to int if it's a string like "speaker_0"
-            if isinstance(speaker_id, str):
-                try:
-                    speaker_id = int(speaker_id.replace('speaker_', ''))
-                except:
-                    speaker_id = 0
+            # Get speaker_id - ElevenLabs returns it as string like "speaker_0"
+            raw_speaker_id = getattr(word, 'speaker_id', None)
+            print(f"DEBUG: Raw speaker_id for '{word_text}': {raw_speaker_id} (type: {type(raw_speaker_id)})")
             
+            speaker_id = 0
+            if raw_speaker_id is not None:
+                if isinstance(raw_speaker_id, int):
+                    speaker_id = raw_speaker_id
+                elif isinstance(raw_speaker_id, str):
+                    # Parse "speaker_0" format
+                    try:
+                        # Remove any prefix like "speaker_" or "Speaker "
+                        clean_id = raw_speaker_id.lower().replace('speaker_', '').replace('speaker', '').strip()
+                        speaker_id = int(clean_id) if clean_id else 0
+                    except (ValueError, AttributeError):
+                        speaker_id = 0
+            
+            # Check if speaker changed
             if speaker_id != current_speaker and current_text:
-                # New speaker, save current segment
                 segments.append({
                     "text": ' '.join(current_text),
-                    "speaker_id": current_speaker or 0,
+                    "speaker_id": current_speaker if current_speaker is not None else 0,
                 })
                 current_text = []
             
@@ -70,15 +96,20 @@ def extract_speaker_segments(result: Any) -> List[Dict]:
         if current_text:
             segments.append({
                 "text": ' '.join(current_text),
-                "speaker_id": current_speaker or 0,
+                "speaker_id": current_speaker if current_speaker is not None else 0,
             })
     
     # If no word-level data, use the full text
     if not segments and hasattr(result, 'text') and result.text:
+        print(f"DEBUG: No word-level data, using full text")
         segments.append({
             "text": result.text,
             "speaker_id": 0,
         })
+    
+    print(f"DEBUG: Extracted {len(segments)} segments:")
+    for seg in segments:
+        print(f"  Speaker {seg['speaker_id']}: {seg['text'][:60]}...")
     
     return segments
 
