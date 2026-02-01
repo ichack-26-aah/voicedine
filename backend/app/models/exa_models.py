@@ -46,6 +46,10 @@ class ResearchGetResponse(BaseModel):
 
 class ResearchSyncRequest(BaseModel):
     prompt: str = Field(..., min_length=1, description="User search query / constraints")
+    model: str = Field(
+        "exa-research",
+        description="Research model: exa-research or exa-research-pro",
+    )
 
 class RestaurantLocation(BaseModel):
     name: str

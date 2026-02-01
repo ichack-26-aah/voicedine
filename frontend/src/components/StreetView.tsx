@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { CHAMPS_ELYSEES_COORDS, LOCATIONS, WALKING_ROUTE } from '@/lib/constants';
 import { RestaurantResult } from '@/lib/types';
-import { apiClient } from '@/lib/api';
+import { streamRestaurants } from '@/lib/api';
 import { MapPin } from 'lucide-react';
 import SearchBar from './SearchBar';
 import 'leaflet/dist/leaflet.css';
@@ -69,12 +69,13 @@ const FlyToLocation = ({ coords }: { coords: { lat: number; lng: number } }) => 
   return null;
 };
 
-// Component to fit bounds to restaurant markers
-const FitBoundsToMarkers = ({ restaurants }: { restaurants: RestaurantResult[] }) => {
+// Component to fit bounds to restaurant markers (only when stream is complete)
+const FitBoundsToMarkers = ({ restaurants, isComplete }: { restaurants: RestaurantResult[]; isComplete: boolean }) => {
   const map = useMap();
 
   useEffect(() => {
-    if (restaurants.length === 0) return;
+    // Only fit bounds when streaming is complete and we have results
+    if (!isComplete || restaurants.length === 0) return;
 
     const bounds = L.latLngBounds(
       restaurants.map(r => [r.geolocation.latitude, r.geolocation.longitude])
@@ -86,7 +87,7 @@ const FitBoundsToMarkers = ({ restaurants }: { restaurants: RestaurantResult[] }
       duration: 1.5,
       maxZoom: 15,
     });
-  }, [restaurants, map]);
+  }, [restaurants, map, isComplete]);
 
   return null;
 };
@@ -121,42 +122,104 @@ const StreetView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultCount, setResultCount] = useState<number | null>(null);
+  const [isStreamComplete, setIsStreamComplete] = useState(false);
+  
+  // Ref to hold the current stream's AbortController
+  const streamControllerRef = useRef<AbortController | null>(null);
+  // Search ID to prevent stale callbacks from updating state
+  const searchIdRef = useRef(0);
 
-  const handleSearch = useCallback(async (query: string) => {
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (streamControllerRef.current) {
+        streamControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Coordinate validation helper - checks global bounds AND proximity to Paris
+  const isValidCoordinate = (lat: number, lng: number): boolean => {
+    // Global bounds check
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+    
+    // Proximity check: must be within ±2 degrees of Champs-Élysées (Paris)
+    // This filters out wildly wrong coordinates from LLM hallucinations
+    const CENTER_LAT = 48.8698; // Champs-Élysées
+    const CENTER_LNG = 2.3078;
+    const MAX_OFFSET = 2; // degrees (~200km)
+    
+    if (Math.abs(lat - CENTER_LAT) > MAX_OFFSET) return false;
+    if (Math.abs(lng - CENTER_LNG) > MAX_OFFSET) return false;
+    
+    return true;
+  };
+
+  const handleSearch = useCallback((query: string) => {
+    // Increment search ID to invalidate stale callbacks
+    const currentSearchId = ++searchIdRef.current;
+
+    // Abort any in-flight stream
+    if (streamControllerRef.current) {
+      streamControllerRef.current.abort();
+      streamControllerRef.current = null;
+    }
+
+    // Reset state for new search
     setIsLoading(true);
     setError(null);
-    setRestaurants([]); // Clear previous markers
+    setRestaurants([]); // Clear previous markers from map
     setResultCount(null);
+    setIsStreamComplete(false);
 
-    try {
-      const results = await apiClient.post<RestaurantResult[]>(
-        '/api/exa/research/sync',
-        { prompt: query }
-      );
+    // Start streaming results
+    const controller = streamRestaurants(
+      query,
+      // onRestaurant: append each result progressively
+      (restaurant) => {
+        // Ignore if this is from a stale search
+        if (searchIdRef.current !== currentSearchId) return;
 
-      // Filter out restaurants without valid geolocation
-      const validResults = results.filter(
-        r => r.geolocation &&
-          typeof r.geolocation.latitude === 'number' &&
-          typeof r.geolocation.longitude === 'number'
-      );
+        if (
+          restaurant.geolocation &&
+          typeof restaurant.geolocation.latitude === 'number' &&
+          typeof restaurant.geolocation.longitude === 'number' &&
+          isValidCoordinate(restaurant.geolocation.latitude, restaurant.geolocation.longitude)
+        ) {
+          setRestaurants((prev) => [...prev, restaurant]);
+        }
+      },
+      // onDone: stream complete
+      (count) => {
+        // Ignore if this is from a stale search
+        if (searchIdRef.current !== currentSearchId) return;
 
-      setRestaurants(validResults);
-      setResultCount(validResults.length);
+        setResultCount(count);
+        setIsLoading(false);
+        setIsStreamComplete(true);
+        streamControllerRef.current = null;
+        
+        // Check if no valid results
+        setRestaurants((prev) => {
+          if (prev.length === 0) {
+            setError('No restaurants found with valid locations. Try a different search.');
+          }
+          return prev;
+        });
+      },
+      // onError
+      (errorMsg) => {
+        // Ignore if this is from a stale search
+        if (searchIdRef.current !== currentSearchId) return;
 
-      if (validResults.length === 0) {
-        setError('No restaurants found with valid locations. Try a different search.');
+        console.error('Stream error:', errorMsg);
+        setError(errorMsg);
+        setIsLoading(false);
+        streamControllerRef.current = null;
       }
-    } catch (err) {
-      console.error('Search error:', err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to search restaurants. Please try again.'
-      );
-    } finally {
-      setIsLoading(false);
-    }
+    );
+
+    streamControllerRef.current = controller;
   }, []);
 
   const handleClearError = useCallback(() => {
@@ -174,9 +237,9 @@ const StreetView: React.FC = () => {
       >
         <FlyToLocation coords={CHAMPS_ELYSEES_COORDS} />
 
-        {/* Fit bounds when restaurants change */}
+        {/* Fit bounds only when stream is complete */}
         {restaurants.length > 0 && (
-          <FitBoundsToMarkers restaurants={restaurants} />
+          <FitBoundsToMarkers restaurants={restaurants} isComplete={isStreamComplete} />
         )}
 
         {/* Dark Matter Tiles - Free, No API Key */}

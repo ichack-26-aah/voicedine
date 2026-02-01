@@ -5,7 +5,7 @@ import { Search, Loader2, AlertCircle, X, Mic, MicOff } from 'lucide-react';
 import { useVoiceRecorder } from '@/lib/useVoiceRecorder';
 
 interface SearchBarProps {
-    onSearch: (query: string) => Promise<void>;
+    onSearch: (query: string) => void | Promise<void>;
     isLoading: boolean;
     error: string | null;
     resultCount: number | null;
