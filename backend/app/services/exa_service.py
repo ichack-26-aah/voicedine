@@ -24,6 +24,13 @@ RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
                     },
                     "price_range": {"type": "string"},
                     "url": {"type": "string"},
+                    "geolocation": {
+                        "type": "object",
+                        "properties": {
+                            "latitude": {"type": "number"},
+                            "longitude": {"type": "number"},
+                        },
+                        "required": ["latitude", "longitude"],
                 },
                 "required": [
                     "name",
@@ -34,7 +41,9 @@ RESTAURANT_OUTPUT_SCHEMA: dict[str, Any] = {
                     "match_criteria",
                     "price_range",
                     "url",
+                    "geolocation",
                 ],
+                }
             },
         },
     },
