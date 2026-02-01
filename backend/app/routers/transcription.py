@@ -5,9 +5,8 @@ import asyncio
 import io
 import json
 import os
-import struct
 import wave
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from elevenlabs.client import ElevenLabs
@@ -36,18 +35,80 @@ def create_wav_from_pcm(pcm_data: bytes, sample_rate: int = 16000, channels: int
     return wav_buffer.read()
 
 
+def extract_speaker_segments(result: Any) -> List[Dict]:
+    """Extract speaker segments from ElevenLabs transcription result."""
+    segments = []
+    
+    # Try to access words with speaker info
+    if hasattr(result, 'words') and result.words:
+        current_speaker = None
+        current_text = []
+        
+        for word in result.words:
+            word_text = getattr(word, 'text', '') or getattr(word, 'word', '') or str(word)
+            speaker_id = getattr(word, 'speaker_id', None) or getattr(word, 'speaker', 0)
+            
+            # Convert speaker_id to int if it's a string like "speaker_0"
+            if isinstance(speaker_id, str):
+                try:
+                    speaker_id = int(speaker_id.replace('speaker_', ''))
+                except:
+                    speaker_id = 0
+            
+            if speaker_id != current_speaker and current_text:
+                # New speaker, save current segment
+                segments.append({
+                    "text": ' '.join(current_text),
+                    "speaker_id": current_speaker or 0,
+                })
+                current_text = []
+            
+            current_speaker = speaker_id
+            current_text.append(word_text)
+        
+        # Don't forget the last segment
+        if current_text:
+            segments.append({
+                "text": ' '.join(current_text),
+                "speaker_id": current_speaker or 0,
+            })
+    
+    # If no word-level data, use the full text
+    if not segments and hasattr(result, 'text') and result.text:
+        segments.append({
+            "text": result.text,
+            "speaker_id": 0,
+        })
+    
+    return segments
+
+def print_segments(segments: List[Dict]):
+    """Print extracted segments to terminal with simple formatting."""
+    for segment in segments:
+        speaker = segment["speaker_id"]
+        text = segment["text"].strip()
+        if text:
+            # Simple color coding for terminal
+            # Speaker 0: Green, Speaker 1: Blue, Speaker 2: Yellow, Others: White
+            colors = {0: "\033[92m", 1: "\033[94m", 2: "\033[93m"}
+            color = colors.get(speaker, "\033[0m")
+            reset = "\033[0m"
+            print(f"{color}[Speaker {speaker}]: {text}{reset}")
+
+
 @router.websocket("/transcribe")
 async def websocket_transcribe(websocket: WebSocket):
     """
     WebSocket endpoint that receives audio from client and returns transcriptions.
-    Uses ElevenLabs Scribe for speech-to-text.
+    Uses ElevenLabs Scribe for speech-to-text with speaker diarization.
     """
     await websocket.accept()
     print("Client WebSocket connection accepted")
 
     # Buffer to accumulate audio chunks for batch processing
+    # 5 seconds of audio gives ElevenLabs more context for speaker diarization
     audio_buffer = bytearray()
-    CHUNK_SIZE = 16000 * 2 * 2  # 2 seconds of 16kHz 16-bit audio
+    CHUNK_SIZE = 16000 * 2 * 5  # 5 seconds of 16kHz 16-bit audio
     sample_rate = 16000
 
     try:
@@ -74,8 +135,8 @@ async def websocket_transcribe(websocket: WebSocket):
 
         print("ElevenLabs client initialized successfully")
 
-        async def transcribe_audio(audio_data: bytes) -> Optional[str]:
-            """Transcribe audio data using ElevenLabs SDK."""
+        async def transcribe_audio(audio_data: bytes) -> List[Dict]:
+            """Transcribe audio data using ElevenLabs SDK with speaker diarization."""
             try:
                 # Wrap PCM in WAV format
                 wav_data = create_wav_from_pcm(audio_data, sample_rate=sample_rate)
@@ -92,15 +153,16 @@ async def websocket_transcribe(websocket: WebSocket):
                         model_id="scribe_v2",
                         language_code="en",
                         diarize=True,
+                        timestamps_granularity="word",
                     )
                 )
                 
-                if result and result.text:
-                    return result.text
-                return None
+                # Extract speaker segments
+                return extract_speaker_segments(result)
+                
             except Exception as e:
                 print(f"Transcription error: {type(e).__name__}: {e}")
-                return None
+                return []
 
         # Process audio in chunks
         while True:
@@ -115,16 +177,17 @@ async def websocket_transcribe(websocket: WebSocket):
                     audio_data = bytes(audio_buffer)
                     audio_buffer.clear()
                     
-                    text = await transcribe_audio(audio_data)
-                    if text:
-                        transcript_data = {
-                            "type": "transcript",
-                            "text": text,
-                            "speaker_id": 0,
-                            "is_final": True,
-                        }
-                        print(f"Transcribed: {text[:50]}...")
-                        await websocket.send_json(transcript_data)
+                    segments = await transcribe_audio(audio_data)
+                    if segments:
+                        print_segments(segments)
+                        for segment in segments:
+                            transcript_data = {
+                                "type": "transcript",
+                                "text": segment["text"],
+                                "speaker_id": segment["speaker_id"],
+                                "is_final": True,
+                            }
+                            await websocket.send_json(transcript_data)
             
             elif "text" in message:
                 try:
@@ -135,14 +198,17 @@ async def websocket_transcribe(websocket: WebSocket):
                             audio_data = bytes(audio_buffer)
                             audio_buffer.clear()
                             
-                            text = await transcribe_audio(audio_data)
-                            if text:
-                                await websocket.send_json({
-                                    "type": "transcript",
-                                    "text": text,
-                                    "speaker_id": 0,
-                                    "is_final": True,
-                                })
+                            segments = await transcribe_audio(audio_data)
+                            
+                            if segments:
+                                print_segments(segments)
+                                for segment in segments:
+                                    await websocket.send_json({
+                                        "type": "transcript",
+                                        "text": segment["text"],
+                                        "speaker_id": segment["speaker_id"],
+                                        "is_final": True,
+                                    })
                 except json.JSONDecodeError:
                     pass
 

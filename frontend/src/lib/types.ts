@@ -17,3 +17,11 @@ export interface RouteData {
   path: Coordinate[];
   color: string;
 }
+
+export interface TranscriptSegment {
+  id: string;
+  text: string;
+  speaker_id: number;
+  is_final: boolean;
+  timestamp: number;
+}
