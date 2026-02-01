@@ -18,13 +18,13 @@ export interface RouteData {
   color: string;
 }
 
-export interface TranscriptSegment {
-  id: string;
-  text: string;
-  speaker_id: number;
-  is_final: boolean;
-  timestamp: number;
-}
+// export interface TranscriptSegment {
+//   id: string;
+//   text: string;
+//   speaker_id: number;
+//   is_final: boolean;
+//   timestamp: number;
+// }
 
 // Exa API restaurant search types
 export interface Geolocation {
