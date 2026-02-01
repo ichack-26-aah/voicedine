@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers import transcription
+
 load_dotenv()
 
 app = FastAPI(title="VoiceDine API", version="0.1.0")
@@ -17,6 +19,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register routers
+app.include_router(transcription.router)
 
 
 @app.get("/health")
