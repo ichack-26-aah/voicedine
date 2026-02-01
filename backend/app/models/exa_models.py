@@ -15,6 +15,11 @@ class ResearchCreateRequest(BaseModel):
 
 # --- Restaurant schema (mirrors the output_schema sent to Exa) ---
 
+class Geolocation(BaseModel):
+    latitude: float
+    longitude: float
+
+
 class RestaurantResult(BaseModel):
     name: str
     address: str
@@ -24,6 +29,7 @@ class RestaurantResult(BaseModel):
     match_criteria: list[str]
     price_range: str
     url: str
+    geolocation: Geolocation
 
 
 # --- Response models ---
